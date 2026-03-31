@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.json.tmp
+/tmp/wafw00f.json
+report_*.json
+.DS_Store
