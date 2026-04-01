@@ -94,7 +94,7 @@ scraping_recon/
 
 | Módulo        | Max requests | Notas                                          |
 |---------------|-------------|------------------------------------------------|
-| legal         | 6           | 3 UAs robots.txt + sitemap + 2 ToS             |
+| legal         | 6           | 2 UAs robots.txt + hasta 5 sitemap probes + 1 ToS (budget sin cambios) |
 | classifier    | 3           | 1 fetch + 1 DNS + 1 mobile UA compare          |
 | auth_detector | 2           | reutiliza fetch de classifier + 1 probe        |
 | api_detector  | 3           | reutiliza fetch + hasta 2 GraphQL probes       |
@@ -136,6 +136,7 @@ class SitemapResult(BaseModel):
     type: str
     url_count: int | None
     last_modified: str | None
+    product_sitemap_url: str | None = None  # /sitemap_products.xml (Shopify), /media/sitemap/ (Magento)
 
 
 class TosResult(BaseModel):
@@ -167,6 +168,28 @@ class SecurityHeadersResult(BaseModel):
     csp_blocks_inline: bool        # CSP contiene "unsafe-inline" ausente → scripts inline bloqueados
 
 
+class EcommerceSignals(BaseModel):
+    """
+    E-commerce specific signals detected from HTML analysis only — no extra requests.
+    All fields default to False/UNKNOWN so non-ecommerce scans are unaffected.
+    """
+    is_ecommerce: bool = False
+    is_product_page: bool = False           # product detail page signals present
+    has_cart: bool = False                  # add-to-cart / mini-cart signals
+    has_price_signals: bool = False         # ≥2 price-related elements detected
+    has_inventory_signals: bool = False     # in-stock / out-of-stock / availability
+    has_review_signals: bool = False        # ratings / review count
+    has_faceted_nav: bool = False           # filter/facet UI detected
+    price_mechanism: Literal["SERVER_SIDE", "CLIENT_SIDE", "STRUCTURED_DATA", "UNKNOWN"] = "UNKNOWN"
+    # SERVER_SIDE: prices in HTML text nodes
+    # CLIENT_SIDE: empty containers + data-price attrs → prices loaded via AJAX
+    # STRUCTURED_DATA: prices only in JSON-LD
+    cart_architecture: Literal["AJAX_FRAGMENTS", "AJAX_API", "SECTION_CACHE", "UNKNOWN_DYNAMIC", "UNKNOWN"] = "UNKNOWN"
+    # AJAX_FRAGMENTS: WooCommerce wc-cart-fragments
+    # AJAX_API: Shopify /cart.js
+    # SECTION_CACHE: Magento magentoSectionData
+
+
 class ClassifierResult(BaseModel):
     type: Literal["STATIC", "DYNAMIC", "HYBRID", "API_DRIVEN", "UNKNOWN"]
     confidence: Literal["HIGH", "MEDIUM", "LOW"]
@@ -186,11 +209,13 @@ class ClassifierResult(BaseModel):
     mobile_differs: bool           # True si mobile UA entrega contenido distinto
     internal_link_count: int       # links internos únicos en el homepage
     estimated_pages: Literal["<50", "50-500", "500-5000", ">5000", "UNKNOWN"]
+    ecommerce: EcommerceSignals = Field(default_factory=EcommerceSignals)
+    is_ecommerce_platform: bool = False  # True si CMS pertenece a ECOMMERCE_PLATFORMS
 
 
 class ApiEndpoint(BaseModel):
     url: str
-    type: Literal["REST", "GraphQL", "WebSocket", "Unknown"]
+    type: Literal["REST", "GraphQL", "WebSocket", "WooCommerce-REST", "Magento-REST", "BigCommerce-REST", "SFCC-REST", "Unknown"]
     authenticated: bool | None
 
 
@@ -210,6 +235,7 @@ class PaginationResult(BaseModel):
     parameter: str | None
     example_next_url: str | None
     requires_js: bool
+    has_faceted_nav: bool = False  # product filter/facet UI detected (retail catalog pattern)
 
 
 class WafDimension(BaseModel):
@@ -310,7 +336,12 @@ class ReconReport(BaseModel):
 
 **[CHECKPOINT 0]** — Ejecuta:
 ```bash
-python -c "from models.schemas import ReconReport; print('schemas OK')"
+python -c "
+from models.schemas import ReconReport, EcommerceSignals, ClassifierResult
+r = ClassifierResult.__fields__
+assert 'ecommerce' in r and 'is_ecommerce_platform' in r
+print('schemas OK — EcommerceSignals fields:', list(EcommerceSignals.__fields__.keys()))
+"
 ```
 Muéstrame el output. No continúes si hay errores de importación.
 
@@ -438,22 +469,45 @@ asyncio.run(test())
 **Importa desde:** `utils.http`, `models.schemas.LegalResult`
 
 ### robots.txt
-- Fetch con los 3 UAs de `utils/http.py`
+- Fetch con **2 UAs**: `UA_CHROME` y `UA_GOOGLEBOT` (eliminar `UA_PYTHON` — señal nula para e-commerce)
 - Parsear con `urllib.robotparser.RobotFileParser`
 - Si el contenido difiere entre UAs (comparar texto normalizado): `ua_specific=True`
 - `target_path_allowed`: verificar si el path de la URL target está permitido para `UA_CHROME`
 - Si retorna 404: `found=False`, campos en default permissivo
 - Si retorna HTML: `found=False`, flag en error log
+- El slot de request liberado (1 request) se usa para el cuarto path de sitemap
 
 ### Sitemap
-- Probar `/sitemap.xml` primero, luego `/sitemap_index.xml`
+Probar en orden — parar al primer 200:
+```python
+SITEMAP_PATHS = [
+    "/sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap_products.xml",       # Shopify — contiene todas las URLs de productos
+    "/sitemap-products.xml",       # Magento / WooCommerce variante
+    "/media/sitemap/sitemap.xml",  # Magento media path
+]
+```
 - Si encuentra `<sitemapindex>`, contar `<sitemap>` children (solo primer nivel)
 - `url_count`: contar `<url>` o `<sitemap>` según el tipo
+- Si el path contiene "product": guardar URL en `SitemapResult.product_sitemap_url`
 
 ### ToS
-- Probar paths: `/terms`, `/tos`, `/legal`, `/terms-of-service`, `/privacy`
+- Probar paths: `/terms`, `/tos`, `/legal`, `/terms-of-service` (omitir `/privacy` — no contiene restricciones de scraping)
 - Si ninguno existe, parsear footer con BS4 buscando links con texto "terms", "tos", "legal"
-- Keywords: `scraping`, `crawling`, `automated`, `bot`, `robot`, `data extraction`, `commercial use`, `prohibited`
+- Keywords (ampliados para e-commerce):
+```python
+TOS_KEYWORDS = [
+    # Restricciones genéricas
+    "scraping", "crawling", "automated", "bot", "robot",
+    "data extraction", "commercial use", "prohibited",
+    # Restricciones específicas de retail
+    "price data", "product data", "price monitoring",
+    "price comparison", "competitive intelligence",
+    "resell", "redistribute", "bulk download",
+    "systematic access", "screen scraping",
+]
+```
 - Risk level: `HIGH` (≥2 keywords) | `MEDIUM` (1 keyword OR no ToS + robots restrictivo) | `LOW` (0 keywords) | `UNKNOWN` (nada encontrado)
 - Si ToS está detrás de auth wall: `found=False`, `risk_level="UNKNOWN"`
 
@@ -500,13 +554,65 @@ FRAMEWORK_SIGNALS = {
 }
 
 CMS_SIGNALS = {
+    # Genéricos
     "WordPress":   {"html": ["/wp-content/", "/wp-includes/", "wp-json"], "headers": []},
-    "Shopify":     {"html": ["cdn.shopify.com", "Shopify.theme"], "headers": []},
+    "Shopify":     {"html": ["cdn.shopify.com", "Shopify.theme", "Shopify.theme.name"], "headers": []},
     "Drupal":      {"html": ["Drupal.settings"], "headers": ["x-drupal-cache"]},
     "Joomla":      {"html": ["/media/jui/"], "headers": []},
     "Wix":         {"html": [], "headers": ["x-wix-request-id"]},
     "Squarespace": {"html": ["squarespace.com"], "headers": []},
     "Webflow":     {"html": ["data-wf-"], "headers": []},
+    # E-commerce platforms — prioridad alta en retail
+    "WooCommerce":   {"html": ["woocommerce", "wc-cart-fragments", "WC.cart",
+                               "woocommerce-js-cookie"], "headers": []},
+    "Magento":       {"html": ["Mage.Cookies", "data-mage-init", "magentoSectionData",
+                               "MAGE_", "mage/cookies"], "headers": ["x-magento-cache-id", "x-magento-tags"]},
+    "BigCommerce":   {"html": ["BCData", "bigcommerce", "bc-sf-filter"], "headers": []},
+    "PrestaShop":    {"html": ["prestashop", "id_product", "id_category_default"],
+                      "headers": ["x-prestashop"]},
+    "Salesforce CC": {"html": ["SiteGenesis", "SFRA", "sfra", "dw.ac", "demandware"],
+                      "headers": ["x-dw-request-id"]},
+    "SAP Hybris":    {"html": ["hybris", "ACC.", "electronics/en/USD"], "headers": []},
+    "OpenCart":      {"html": ["catalog/view/javascript/opencart"], "headers": []},
+    "VTEX":          {"html": ["vtex.com", "__RUNTIME__", "vtex-render"],
+                      "headers": ["x-vtex-cache-status"]},
+}
+
+# Plataformas que siempre son HYBRID (SSR product content + AJAX cart/price)
+ECOMMERCE_PLATFORMS = {
+    "Shopify", "WooCommerce", "Magento", "BigCommerce", "PrestaShop",
+    "Salesforce CC", "SAP Hybris", "OpenCart", "VTEX",
+}
+
+# Señales de e-commerce por categoría — análisis puro sobre HTML ya fetcheado
+ECOMMERCE_SIGNALS: dict[str, list[str]] = {
+    "product_page": [
+        'itemtype="http://schema.org/Product"',
+        '"@type": "Product"', '"@type":"Product"',
+        'data-product-id', 'data-sku', 'class="product-detail',
+        'id="product-detail', 'class="pdp-',
+    ],
+    "cart_signals": [
+        "add-to-cart", "addToCart", "add_to_cart",
+        "atc-button", "mini-cart", "cart-count", "basket",
+    ],
+    "price_signals": [
+        'class="price"', 'itemprop="price"', 'data-price',
+        'class="product-price', "sale-price", "original-price",
+        "special-price", "regular-price", "was-price",
+    ],
+    "inventory_signals": [
+        "in-stock", "out-of-stock", "stock-status", "availability",
+        "data-in-stock", '"availability"', "backorder", "preorder",
+    ],
+    "review_signals": [
+        'itemprop="ratingValue"', 'itemprop="reviewCount"',
+        "star-rating", "review-count", "product-reviews",
+    ],
+    "faceted_nav": [
+        "facets", "filter-panel", "refinement", "plp-filters",
+        "layered-navigation", "sidebar-filter", "active-filter",
+    ],
 }
 
 CDN_SIGNALS = {
@@ -586,13 +692,69 @@ estimated_pages = (
 - Resultado popula `mobile_differs` en `ClassifierResult`
 - Usa 1 request adicional del budget
 
-**Clasificación final:**
+**Nueva función `_detect_ecommerce_signals(html, soup) -> EcommerceSignals`** — sin requests:
+- Contar hits por categoría de `ECOMMERCE_SIGNALS`
+- `price_mechanism`: si hay `data-price` attrs vacíos → `CLIENT_SIDE`; spans con precio en texto → `SERVER_SIDE`
+- `cart_architecture`: detectar por patrones (`wc-cart-fragments` → `AJAX_FRAGMENTS`, `/cart.js` → `AJAX_API`, `magentoSectionData` → `SECTION_CACHE`)
+- `is_ecommerce`: True si ≥1 hit en product_page, cart_signals, o price_signals
+
+**Wiring en `classify_page()`:**
+```python
+ecommerce = _detect_ecommerce_signals(html, soup)
+is_ecommerce_platform = cms in ECOMMERCE_PLATFORMS
+
+# Pasar ecommerce signals y cms a _classify()
+page_type, confidence = _classify(content_ratio, js_frameworks, cms)
+
+return ClassifierResult(
+    ...,
+    ecommerce=ecommerce,
+    is_ecommerce_platform=is_ecommerce_platform,
+)
 ```
-STATIC:     content_ratio ≥ 0.15 AND no JS frameworks
-DYNAMIC:    JS frameworks detectados OR content_ratio < 0.15
-API_DRIVEN: content_ratio < 0.05 AND body sin estructuras HTML normales
-HYBRID:     STATIC + frameworks de hidratación (HTMX, Astro)
-UNKNOWN:    ninguna señal suficiente
+
+**Clasificación final — `_classify(content_ratio, js_frameworks, cms)` con reglas platform-aware:**
+
+```python
+# 1. API-driven (universal)
+if content_ratio < 0.05:
+    return "API_DRIVEN", "HIGH"
+
+# 2. Headless commerce: Next.js/Nuxt SSR con __NEXT_DATA__ embebe producto en HTML
+#    → HYBRID no DYNAMIC (los datos están en el blob, no requieren JS fetch)
+HEADLESS_FRAMEWORKS = {"Next.js", "Nuxt", "Gatsby", "Remix"}
+if js_frameworks and any(f in HEADLESS_FRAMEWORKS for f in js_frameworks):
+    if content_ratio >= 0.10:
+        return "HYBRID", "HIGH"
+    return "DYNAMIC", "MEDIUM"
+
+# 3. SSR e-commerce con cart AJAX: siempre HYBRID
+SSR_ECOMMERCE = {"Magento", "WooCommerce", "PrestaShop", "OpenCart", "Sylius"}
+if cms in SSR_ECOMMERCE:
+    return "HYBRID", "HIGH" if content_ratio >= 0.15 else "HYBRID", "MEDIUM"
+
+# 4. Plataformas Liquid/SSR + AJAX cart definitivo
+if cms in {"Shopify", "BigCommerce", "VTEX"}:
+    return "HYBRID", "HIGH"
+
+# 5. Salesforce CC / SAP Hybris: SSR pesado
+if cms in {"Salesforce CC", "SAP Hybris"}:
+    return "HYBRID", "MEDIUM"
+
+# 6. Frameworks JS genéricos sin CMS conocido
+if js_frameworks:
+    hydration = {"HTMX", "Astro"}
+    if all(f in hydration for f in js_frameworks) and content_ratio >= 0.15:
+        return "HYBRID", "MEDIUM"
+    return "DYNAMIC", "HIGH" if content_ratio < 0.15 else "MEDIUM"
+
+# 7. Estático puro
+if content_ratio >= 0.15:
+    return "STATIC", "HIGH"
+if content_ratio >= 0.08:
+    return "STATIC", "MEDIUM"
+
+return "UNKNOWN", "LOW"
 ```
 
 **[CHECKPOINT 4]** — Ejecuta:
@@ -602,14 +764,23 @@ import asyncio
 from modules.classifier import classify_page
 
 async def test():
-    for url in ['https://example.com', 'https://news.ycombinator.com']:
-        r = await classify_page(url, timeout=10)
-        print(url.split('/')[2], r.type, r.confidence, r.js_frameworks)
+    tests = [
+        ('https://example.com', 'STATIC', None),
+        ('https://news.ycombinator.com', 'STATIC', None),
+        ('https://www.buscalibre.cl', 'HYBRID', True),
+    ]
+    for url, expected_type, expected_ecom in tests:
+        r = await classify_page(url, timeout=15)
+        ok_type = r.type == expected_type
+        ok_ecom = expected_ecom is None or r.is_ecommerce_platform == expected_ecom
+        status = 'OK' if (ok_type and ok_ecom) else 'FAIL'
+        print(f'{status} {url.split(\"/\")[2]}: type={r.type} cms={r.cms} is_ecommerce_platform={r.is_ecommerce_platform}')
+        print(f'   ecommerce={r.ecommerce.model_dump()}')
 
 asyncio.run(test())
 "
 ```
-Expected: `example.com → STATIC/HIGH`, `news.ycombinator.com → STATIC/HIGH`.
+Expected: `example.com → STATIC`, `ycombinator → STATIC`, `buscalibre.cl → HYBRID/is_ecommerce_platform=True`.
 
 ---
 
@@ -625,6 +796,14 @@ API_PATTERNS = [
     r'\$\.ajax\(.*?url:\s*["\']([^"\']+)["\']',
     r'((?:/api/|/v\d+/|/graphql)[a-zA-Z0-9/_-]+)',
     r'(wss?://[^\s"\']+)',
+    # E-commerce platform APIs documentadas
+    r'(/api/\d{4}-\d{2}/graphql\.json)',              # Shopify Storefront API
+    r'(/wp-json/wc/v\d+/[a-zA-Z0-9/_-]+)',           # WooCommerce REST
+    r'(/rest/[^/]+/V\d+/[a-zA-Z0-9/_-]+)',           # Magento REST
+    r'(/api/storefront/[a-zA-Z0-9/_-]+)',             # BigCommerce
+    r'(/on/demandware\.store/[a-zA-Z0-9/_-]+)',       # Salesforce CC
+    r'(/products?(?:/|\.json))',                       # Shopify /products.json
+    r'(/cart\.js|/cart/add\.js|/cart/update\.js)',    # Shopify cart API
 ]
 
 STATE_PATTERNS = [
@@ -632,8 +811,27 @@ STATE_PATTERNS = [
     "window.__INITIAL_STATE__",
     "window.__REDUX_STATE__",
     "window.__PRELOADED_STATE__",
+    # E-commerce state blobs
+    "window.ShopifyAnalytics",    # Shopify: product/variant data en la página
+    "window.__MAGENTO_INIT__",    # Magento 2 page config
+    "var BCData",                  # BigCommerce customer/cart data
+    "window.SiteGenesis",         # Salesforce CC
+    "window.__WC_DATA__",         # WooCommerce block editor
 ]
 ```
+
+**Clasificación de endpoints e-commerce:**
+```python
+ECOMMERCE_API_TYPE_MAP = {
+    "/wp-json/wc/":        "WooCommerce-REST",
+    "/rest/V":             "Magento-REST",
+    "/api/storefront/":    "BigCommerce-REST",
+    "/on/demandware":      "SFCC-REST",
+    "graphql":             "GraphQL",
+    "wss://": "WebSocket", "ws://": "WebSocket",
+}
+```
+Extender `_classify_endpoint()` para usar este mapa antes del fallback genérico.
 
 **GraphQL introspection** — si se encuentra `/graphql` o `/api/graphql`:
 ```python
@@ -668,22 +866,47 @@ asyncio.run(test())
 **Importa desde:** `utils.http`, `models.schemas.PaginationResult`
 
 ```python
-QUERY_PARAM_PATTERNS = ["page", "p", "offset", "start", "pg"]
-PATH_PATTERNS         = [r"/page/\d+", r"/p/\d+"]
-CURSOR_PATTERNS       = ["cursor", "after", "before", "next_token"]
-LOAD_MORE_PATTERNS    = ["load-more", "btn-next", "ver más", "load_more", "loadmore"]
+QUERY_PARAM_PATTERNS = [
+    # Genéricos
+    "page", "p", "offset", "start", "pg",
+    # E-commerce platform specific
+    "currentPage",   # Magento GraphQL / SFCC
+    "pageNumber",    # BigCommerce
+    "pn",            # Retailer abreviación
+    "cp",            # BigCommerce category page
+    "sz",            # Salesforce CC (page size, paired with 'start')
+]
+
+PATH_PATTERNS = [
+    r"/page/\d+",          # WordPress / WooCommerce
+    r"/p/\d+",             # Forma corta
+    r"/page-\d+",          # Variante con guion
+    r"/[^/]+-\d+\.html$",  # Magento SEO URLs: /blue-shirts-2.html
+]
+
+CURSOR_PATTERNS    = ["cursor", "after", "before", "next_token"]
+LOAD_MORE_PATTERNS = ["load-more", "btn-next", "ver más", "load_more", "loadmore"]
+
+# Parámetros de faceted navigation (product filters) — no paginación, pero crítico para e-commerce
+FACETED_NAV_PARAMS = [
+    "color", "size", "brand", "price", "rating", "sort", "sortBy",
+    "sort_by", "orderBy", "refinementList", "filters", "facets",
+]
+FACETED_NAV_CLASSES = ["facet", "filter-panel", "refinement", "layered-nav", "plp-filters"]
 ```
 
 **Orden de prioridad:**
 1. `LINK_REL_NEXT`: `soup.find('link', rel='next')` — prioridad máxima
 2. `QUERY_PARAM`: buscar en `<a href>` parámetros de la lista
 3. `PATH`: regex contra todos los `<a href>`
-4. `CURSOR`: buscar en `<a href>` y JSON state blobs
-5. `LOAD_MORE`: buscar class/id/text que coincidan
-6. `INFINITE_SCROLL`: buscar `IntersectionObserver` o `scroll` event listeners en JS
-7. `NONE`: ninguna señal
+4. **FACETED_NAV check** (paralelo, no exclusivo): si hay elementos con class en `FACETED_NAV_CLASSES` Y links con params de `FACETED_NAV_PARAMS` → setear `has_faceted_nav=True` en el resultado. No cambia el `type` principal — solo agrega el flag.
+5. `CURSOR`: buscar en `<a href>` y JSON state blobs
+6. `LOAD_MORE`: buscar class/id/text que coincidan
+7. `INFINITE_SCROLL`: buscar `IntersectionObserver` o `scroll` event listeners en JS
+8. `NONE`: ninguna señal
 
 `requires_js=True` si el tipo es `LOAD_MORE` o `INFINITE_SCROLL`.
+`has_faceted_nav` se evalúa siempre, independiente del tipo principal.
 
 **[CHECKPOINT 6]** — Ejecuta:
 ```bash
@@ -899,22 +1122,74 @@ def build_recommendation(report: ReconReport) -> RecommenderResult:
 **Árbol de decisión (orden exacto):**
 ```
 1. Si antibot is None → primary="httpx", secondary=None, complejidad=3
+
 2. Si antibot.overall_score >= 8 →
        primary="playwright + playwright-stealth"
        secondary="curl_cffi + residential proxy"
        managed_api_suggested=True
        managed_api_options=["ZenRows", "ScraperAPI", "Scrapfly"]
+
+2.5. Si classifier.is_ecommerce_platform → rama e-commerce (ver abajo)
+
 3. Si classifier.type == "STATIC":
      Si antibot.overall_score == 0 → primary="httpx + BeautifulSoup4", secondary="Scrapy"
      Sino → primary="curl_cffi + BeautifulSoup4", secondary="httpx rotating UA"
+
 4. Si classifier.type in ["DYNAMIC", "API_DRIVEN"]:
      Si api_detector.internal_api_found →
          primary="httpx direct to API"
          secondary="curl_cffi si tls_score >= 2"
      Sino → primary="Playwright async", secondary="Selenium"
+
 5. Si classifier.type == "HYBRID":
      primary="httpx SSR + Playwright opcional"
      secondary="Scrapy + Playwright plugin"
+```
+
+**Rama 2.5 — E-commerce platform (detalles):**
+```python
+cms = classifier.cms
+
+if cms == "Shopify":
+    # Siempre tiene /products.json y cart API documentadas
+    if api and any("graphql" in e.url for e in api.endpoints):
+        primary = "httpx + gql (Shopify Storefront API)"
+        complexity = 4
+    else:
+        primary = "httpx (Shopify AJAX: /products.json, /cart.js)"
+        complexity = 3
+    secondary = "curl_cffi" if antibot and antibot.dimensions.tls_fingerprint.score >= 2 else None
+    dev_time = "1-2 days"
+
+elif cms == "WooCommerce":
+    primary = "httpx (WooCommerce REST: /wp-json/wc/v3/products)"
+    secondary = "BeautifulSoup4 HTML fallback"
+    complexity = 3; dev_time = "1-2 days"
+
+elif cms == "Magento":
+    if api and any("graphql" in e.url for e in api.endpoints):
+        primary = "httpx + gql (Magento GraphQL)"
+        secondary = "BeautifulSoup4 SSR fallback"
+        complexity = 6; dev_time = "3-5 days"
+    else:
+        primary = "httpx + BeautifulSoup4 (SSR HTML)"
+        secondary = "Playwright para /customer/section/load/ sections"
+        complexity = 7; dev_time = "3-7 days"
+
+elif cms == "BigCommerce":
+    primary = "httpx (BigCommerce: /products.json, /api/storefront/)"
+    secondary = "curl_cffi" if antibot and antibot.dimensions.tls_fingerprint.score >= 2 else None
+    complexity = 4; dev_time = "2-3 days"
+
+elif cms in ("Salesforce CC", "SAP Hybris"):
+    primary = "httpx + BeautifulSoup4 (SSR)"
+    secondary = "Playwright para contenido AJAX"
+    complexity = 7; dev_time = "4-7 days"
+
+else:  # VTEX, PrestaShop, OpenCart, etc.
+    primary = "httpx + BeautifulSoup4"
+    secondary = "Playwright para secciones dinámicas"
+    complexity = 5; dev_time = "2-4 days"
 ```
 
 **Flags adicionales (evaluar siempre):**
@@ -958,6 +1233,21 @@ if classifier and classifier.estimated_pages == ">5000":
 # AJAX gap
 if api_detector and api_detector.endpoints_may_be_incomplete:
     flags.append("DYNAMIC site — run with --deep flag (Playwright) for complete XHR endpoint map")
+# E-commerce flags (evaluar siempre si hay datos de e-commerce)
+if classifier and classifier.ecommerce.price_mechanism == "CLIENT_SIDE":
+    flags.append("Prices rendered client-side — use Playwright or intercept XHR price API")
+if classifier and classifier.ecommerce.cart_architecture in ("AJAX_FRAGMENTS", "AJAX_API", "SECTION_CACHE"):
+    flags.append(f"Cart uses {classifier.ecommerce.cart_architecture} — do not scrape cart state from HTML")
+if classifier and classifier.ecommerce.has_faceted_nav:
+    flags.append("Faceted navigation detected — enumerate filter combinations for full catalog coverage")
+if classifier and classifier.ecommerce.has_inventory_signals:
+    flags.append("Inventory/stock data present — may change frequently, add TTL cache to pipeline")
+if legal and legal.sitemap.product_sitemap_url:
+    flags.append(f"Product sitemap available ({legal.sitemap.product_sitemap_url}) — use as URL source instead of crawling HTML")
+# E-commerce structured data shortcut
+if classifier and classifier.ecommerce.is_ecommerce and classifier.structured_data.scraping_shortcut:
+    types = ", ".join(classifier.structured_data.schema_types)
+    flags.append(f"JSON-LD Product schema available ({types}) — parse structured data for price/SKU/availability instead of DOM")
 ```
 
 **[CHECKPOINT 8]** — Test unitario puro:
@@ -1010,15 +1300,19 @@ results = await asyncio.gather(
 
 ### Secciones del report terminal (en orden):
 1. Header: URL | timestamp | duración total
-2. Legal Scope — robots.txt | sitemap | ToS risk (GREEN=LOW, YELLOW=MEDIUM, RED=HIGH)
+2. Legal Scope — robots.txt | sitemap | ToS risk (GREEN=LOW, YELLOW=MEDIUM, RED=HIGH) | product_sitemap_url si existe
 3. Page Classification — badge + frameworks + CMS + server + CDN + locales + `mobile_differs` + structured data types + `estimated_pages` + `internal_link_count`
-4. Security & Freshness — tabla de security headers + cache_control + last_modified
-5. Auth & Access — type + paywall + cookie consent (YELLOW si required, RED si HARD paywall)
-6. API Endpoints — tabla con type y auth status
-7. Pagination — type + parameter + requires_js
-8. Anti-Bot Score — progress bar 0–10 + tabla de 7 dimensiones
-9. Recommendations — lista rankeada + resumen + complejidad
-10. Footer: `Modules completed: N/7 | Partial failures: [lista]`
+4. **E-Commerce Signals** — visible solo si `classifier.ecommerce.is_ecommerce = True`:
+   - Platform (CMS) | is_product_page | has_cart | has_price_signals | has_inventory_signals | has_review_signals
+   - price_mechanism (GREEN si SERVER_SIDE, YELLOW si CLIENT_SIDE, DIM si UNKNOWN)
+   - cart_architecture | has_faceted_nav
+5. Security & Freshness — tabla de security headers + cache_control + last_modified
+6. Auth & Access — type + paywall + cookie consent (YELLOW si required, RED si HARD paywall)
+7. API Endpoints — tabla con type y auth status (incluir tipos e-commerce: WooCommerce-REST, Magento-REST, etc.)
+8. Pagination — type + parameter + requires_js + `has_faceted_nav` badge si True
+9. Anti-Bot Score — progress bar 0–10 + tabla de 7 dimensiones
+10. Recommendations — lista rankeada + resumen + complejidad
+11. Footer: `Modules completed: N/7 | Partial failures: [lista]`
 
 **[CHECKPOINT 9]** — Ejecuta:
 ```bash
