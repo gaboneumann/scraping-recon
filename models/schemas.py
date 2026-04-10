@@ -53,6 +53,29 @@ class SecurityHeadersResult(BaseModel):
     csp_blocks_inline: bool
 
 
+class EcommerceSignals(BaseModel):
+    """E-commerce detection signals derived from HTML — no additional requests."""
+
+    is_ecommerce: bool
+    platform: str | None
+    price_mechanism: Literal["CLIENT_SIDE", "SERVER_SIDE", "UNKNOWN"]
+    cart_architecture: Literal["AJAX_FRAGMENTS", "AJAX_API", "SECTION_CACHE", "UNKNOWN"]
+    has_faceted_nav: bool
+    has_product_schema: bool
+    signal_counts: dict[str, int]
+
+
+class PdpSampleResult(BaseModel):
+    """Result of fetching 1 PDP URL extracted from category HTML."""
+
+    url: str
+    renders_server_side: bool
+    price_in_html: bool
+    product_schema_found: bool
+    response_time_ms: int
+    same_protection_as_category: bool
+
+
 class ClassifierResult(BaseModel):
     type: Literal["STATIC", "DYNAMIC", "HYBRID", "API_DRIVEN", "UNKNOWN"]
     confidence: Literal["HIGH", "MEDIUM", "LOW"]
@@ -72,6 +95,9 @@ class ClassifierResult(BaseModel):
     mobile_differs: bool
     internal_link_count: int
     estimated_pages: Literal["<50", "50-500", "500-5000", ">5000", "UNKNOWN"]
+    ecommerce: EcommerceSignals | None = None
+    is_ecommerce_platform: bool = False
+    pdp_sample: PdpSampleResult | None = None
 
 
 class ApiEndpoint(BaseModel):

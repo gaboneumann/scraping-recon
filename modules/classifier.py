@@ -16,6 +16,8 @@ from bs4 import BeautifulSoup
 
 from models.schemas import (
     ClassifierResult,
+    EcommerceSignals,
+    PdpSampleResult,
     SecurityHeadersResult,
     StructuredDataResult,
 )
@@ -45,6 +47,56 @@ CMS_SIGNALS: dict[str, dict[str, list[str]]] = {
     "Wix":         {"html": [], "headers": ["x-wix-request-id"]},
     "Squarespace": {"html": ["squarespace.com"], "headers": []},
     "Webflow":     {"html": ["data-wf-"], "headers": []},
+    # E-commerce platforms
+    "WooCommerce":   {"html": ["woocommerce", "wc-cart-fragments", "WC.cart",
+                               "woocommerce-js-cookie"], "headers": []},
+    "Magento":       {"html": ["Mage.Cookies", "data-mage-init", "magentoSectionData",
+                               "MAGE_", "mage/cookies"],
+                      "headers": ["x-magento-cache-id", "x-magento-tags"]},
+    "BigCommerce":   {"html": ["BCData", "bigcommerce", "bc-sf-filter"], "headers": []},
+    "PrestaShop":    {"html": ["prestashop", "id_product", "id_category_default"],
+                      "headers": ["x-prestashop"]},
+    "Salesforce CC": {"html": ["SiteGenesis", "SFRA", "sfra", "dw.ac", "demandware"],
+                      "headers": ["x-dw-request-id"]},
+    "SAP Hybris":    {"html": ["hybris", "ACC.", "electronics/en/USD"], "headers": []},
+    "OpenCart":      {"html": ["catalog/view/javascript/opencart"], "headers": []},
+    "VTEX":          {"html": ["vtex.com", "__RUNTIME__", "vtex-render"],
+                      "headers": ["x-vtex-cache-status"]},
+}
+
+ECOMMERCE_PLATFORMS: set[str] = {
+    "Shopify", "WooCommerce", "Magento", "BigCommerce", "PrestaShop",
+    "Salesforce CC", "SAP Hybris", "OpenCart", "VTEX",
+}
+
+ECOMMERCE_SIGNALS: dict[str, list[str]] = {
+    "product_page": [
+        'itemtype="http://schema.org/Product"',
+        '"@type": "Product"', '"@type":"Product"',
+        'data-product-id', 'data-sku', 'class="product-detail',
+        'id="product-detail', 'class="pdp-',
+    ],
+    "cart_signals": [
+        "add-to-cart", "addToCart", "add_to_cart",
+        "atc-button", "mini-cart", "cart-count", "basket",
+    ],
+    "price_signals": [
+        'class="price"', 'itemprop="price"', 'data-price',
+        'class="product-price', "sale-price", "original-price",
+        "special-price", "regular-price", "was-price",
+    ],
+    "inventory_signals": [
+        "in-stock", "out-of-stock", "stock-status", "availability",
+        "data-in-stock", '"availability"', "backorder", "preorder",
+    ],
+    "review_signals": [
+        'itemprop="ratingValue"', 'itemprop="reviewCount"',
+        "star-rating", "review-count", "product-reviews",
+    ],
+    "faceted_nav": [
+        "facets", "filter-panel", "refinement", "plp-filters",
+        "layered-navigation", "sidebar-filter", "active-filter",
+    ],
 }
 
 CDN_SIGNALS: dict[str, list[str]] = {
@@ -101,6 +153,15 @@ async def classify_page(url: str, timeout: float = 15.0) -> ClassifierResult:
     mobile_result = await compare_mobile_desktop(url, timeout=timeout)
     mobile_differs = mobile_result["content_differs"]
 
+    # E-commerce detection (no extra requests)
+    ecommerce = _detect_ecommerce_signals(html, soup, cms)
+    is_ecommerce_platform = cms in ECOMMERCE_PLATFORMS
+
+    # PDP fetch (1 extra request, only if e-commerce signals found)
+    pdp_sample: PdpSampleResult | None = None
+    if ecommerce.is_ecommerce:
+        pdp_sample = await _fetch_pdp_sample(url, html, headers, timeout)
+
     # Classification logic
     page_type, confidence = _classify(
         content_ratio, js_frameworks, cms
@@ -125,6 +186,9 @@ async def classify_page(url: str, timeout: float = 15.0) -> ClassifierResult:
         mobile_differs=mobile_differs,
         internal_link_count=internal_link_count,
         estimated_pages=estimated_pages,
+        ecommerce=ecommerce,
+        is_ecommerce_platform=is_ecommerce_platform,
+        pdp_sample=pdp_sample,
     )
 
 
@@ -291,26 +355,167 @@ async def _dns_lookup(url: str) -> dict[str, str]:
         return {}
 
 
+def _detect_ecommerce_signals(
+    html: str, soup: BeautifulSoup, cms: str | None
+) -> EcommerceSignals:
+    """Detect e-commerce signals from HTML — no additional requests."""
+    signal_counts: dict[str, int] = {}
+    for category, signals in ECOMMERCE_SIGNALS.items():
+        signal_counts[category] = sum(1 for sig in signals if sig in html)
+
+    is_ecommerce = any(
+        signal_counts.get(cat, 0) > 0
+        for cat in ("product_page", "cart_signals", "price_signals")
+    )
+    has_product_schema = (
+        '"@type": "Product"' in html or '"@type":"Product"' in html
+    )
+    has_faceted_nav = signal_counts.get("faceted_nav", 0) > 0
+
+    # Price mechanism: empty data-price attr → client-side; text in price element → server-side
+    if re.search(r'data-price=["\'][\s]*["\']', html):
+        price_mechanism: str = "CLIENT_SIDE"
+    elif signal_counts.get("price_signals", 0) > 0:
+        price_mechanism = "SERVER_SIDE"
+    else:
+        price_mechanism = "UNKNOWN"
+
+    # Cart architecture
+    if "wc-cart-fragments" in html:
+        cart_architecture: str = "AJAX_FRAGMENTS"
+    elif "/cart.js" in html:
+        cart_architecture = "AJAX_API"
+    elif "magentoSectionData" in html:
+        cart_architecture = "SECTION_CACHE"
+    else:
+        cart_architecture = "UNKNOWN"
+
+    platform = cms if cms in ECOMMERCE_PLATFORMS else None
+
+    return EcommerceSignals(
+        is_ecommerce=is_ecommerce,
+        platform=platform,
+        price_mechanism=price_mechanism,  # type: ignore[arg-type]
+        cart_architecture=cart_architecture,  # type: ignore[arg-type]
+        has_faceted_nav=has_faceted_nav,
+        has_product_schema=has_product_schema,
+        signal_counts=signal_counts,
+    )
+
+
+async def _fetch_pdp_sample(
+    category_url: str,
+    html: str,
+    category_headers: dict[str, str],
+    timeout: float,
+) -> PdpSampleResult | None:
+    """Extract 1 PDP link from category HTML and fetch it. Returns None if no PDP found."""
+    soup = BeautifulSoup(html, "lxml")
+    base = urlparse(category_url)
+    pdp_pattern = re.compile(
+        r'/(p|product|item|producto|detalle|pdp)/|/[^/]+-\d+\.html$',
+        re.IGNORECASE,
+    )
+
+    pdp_url: str | None = None
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        parsed = urlparse(href)
+        # Resolve relative URLs
+        if not parsed.scheme:
+            href = f"{base.scheme}://{base.netloc}{href}" if href.startswith("/") else href
+        if pdp_pattern.search(href):
+            pdp_url = href
+            break
+
+    if not pdp_url:
+        return None
+
+    try:
+        _, pdp_headers, pdp_html, pdp_ms = await make_request(
+            pdp_url, ua=UA_CHROME, timeout=timeout
+        )
+    except Exception as exc:
+        logger.warning("PDP fetch failed for %s: %s", pdp_url, exc)
+        return None
+
+    pdp_soup = BeautifulSoup(pdp_html, "lxml")
+    pdp_ratio = _compute_content_ratio(pdp_soup, pdp_html)
+
+    # Price in HTML: look for non-empty text in price-classed elements
+    price_in_html = False
+    for el in pdp_soup.find_all(class_=re.compile(r'price', re.I)):
+        text = el.get_text(strip=True)
+        if text and re.search(r'\d', text):
+            price_in_html = True
+            break
+
+    product_schema_found = (
+        '"@type": "Product"' in pdp_html or '"@type":"Product"' in pdp_html
+    )
+
+    # Compare bot-detection headers present in both responses
+    bot_headers = {
+        "cf-ray", "x-vtex-cache-status", "x-magento-cache-id",
+        "x-dw-request-id", "x-prestashop", "__cf_bm",
+    }
+    cat_lower = {k.lower() for k in category_headers}
+    pdp_lower = {k.lower() for k in pdp_headers}
+    cat_bot = cat_lower & bot_headers
+    pdp_bot = pdp_lower & bot_headers
+    same_protection = cat_bot == pdp_bot
+
+    return PdpSampleResult(
+        url=pdp_url,
+        renders_server_side=pdp_ratio >= 0.15,
+        price_in_html=price_in_html,
+        product_schema_found=product_schema_found,
+        response_time_ms=pdp_ms,
+        same_protection_as_category=same_protection,
+    )
+
+
+_HEADLESS_FRAMEWORKS = {"Next.js", "Nuxt", "Gatsby", "Remix"}
+_SSR_ECOMMERCE = {"Magento", "WooCommerce", "PrestaShop", "OpenCart", "SAP Hybris"}
+
+
 def _classify(
     content_ratio: float,
     js_frameworks: list[str],
     cms: str | None,
 ) -> tuple[str, str]:
-    """Determine page type and confidence from collected signals."""
-    hydration_frameworks = {"HTMX", "Astro"}
-
+    """Determine page type and confidence — platform-aware rules."""
     if content_ratio < 0.05:
         return "API_DRIVEN", "HIGH"
 
+    # Headless commerce: SSR blob in HTML → HYBRID, not DYNAMIC
+    if js_frameworks and any(f in _HEADLESS_FRAMEWORKS for f in js_frameworks):
+        if content_ratio >= 0.10:
+            return "HYBRID", "HIGH"
+        return "DYNAMIC", "MEDIUM"
+
+    # SSR e-commerce with AJAX cart
+    if cms in _SSR_ECOMMERCE:
+        if content_ratio >= 0.15:
+            return "HYBRID", "HIGH"
+        return "HYBRID", "MEDIUM"
+
+    # Liquid/SaaS platforms: always HYBRID
+    if cms in {"Shopify", "BigCommerce", "VTEX"}:
+        return "HYBRID", "HIGH"
+
+    if cms in {"Salesforce CC", "SAP Hybris"}:
+        return "HYBRID", "MEDIUM"
+
+    # Generic JS frameworks
     if js_frameworks:
-        if all(f in hydration_frameworks for f in js_frameworks) and content_ratio >= 0.15:
+        hydration = {"HTMX", "Astro"}
+        if all(f in hydration for f in js_frameworks) and content_ratio >= 0.15:
             return "HYBRID", "MEDIUM"
         return "DYNAMIC", "HIGH" if content_ratio < 0.15 else "MEDIUM"
 
     if content_ratio >= 0.15:
         return "STATIC", "HIGH"
-
     if content_ratio >= 0.08:
         return "STATIC", "MEDIUM"
-
     return "UNKNOWN", "LOW"

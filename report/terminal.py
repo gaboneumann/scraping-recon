@@ -128,6 +128,30 @@ def _render_classifier(console: Console, c) -> None:
     if c.last_modified:
         table.add_row("Last-Modified", c.last_modified)
 
+    if c.ecommerce and c.ecommerce.is_ecommerce:
+        ec = c.ecommerce
+        platform_str = ec.platform or ("platform detected" if c.is_ecommerce_platform else "signals only")
+        table.add_row(
+            "E-commerce",
+            f"[bold magenta]{platform_str}[/bold magenta]"
+            f" | price: {ec.price_mechanism}"
+            f" | cart: {ec.cart_architecture}"
+            + (" | faceted nav" if ec.has_faceted_nav else "")
+            + (" | [green]product schema ✓[/green]" if ec.has_product_schema else ""),
+        )
+        if c.pdp_sample:
+            pdp = c.pdp_sample
+            ssr = "[green]server-side[/green]" if pdp.renders_server_side else "[yellow]JS-rendered[/yellow]"
+            price_tag = "[green]in HTML[/green]" if pdp.price_in_html else "[yellow]loaded via JS[/yellow]"
+            schema_tag = "[green]✓[/green]" if pdp.product_schema_found else "none"
+            prot_tag = "[green]same[/green]" if pdp.same_protection_as_category else "[yellow]differs[/yellow]"
+            table.add_row(
+                "PDP sample",
+                f"render: {ssr} | price: {price_tag} | schema: {schema_tag}"
+                f" | protection: {prot_tag} | {pdp.response_time_ms}ms"
+                f"\n  [dim]{pdp.url[:80]}[/dim]",
+            )
+
     console.print(Panel(table, title="[bold]Page Classification[/bold]"))
 
 
