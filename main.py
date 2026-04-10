@@ -88,30 +88,43 @@ async def _run_scan(
             return name == single_module
         return name not in skip
 
-    # Run modules concurrently
-    tasks = []
-    names = []
+    # Phase 1: independent modules run concurrently
+    phase1_tasks = []
+    phase1_names = []
 
-    if should_run("legal"):
-        tasks.append(run_module("legal", analyze_legal(url, config.timeout)))
-        names.append("legal")
-    if should_run("classifier"):
-        tasks.append(run_module("classifier", classify_page(url, config.timeout)))
-        names.append("classifier")
-    if should_run("auth_detector"):
-        tasks.append(run_module("auth_detector", detect_auth(url, config.timeout)))
-        names.append("auth_detector")
-    if should_run("api_detector"):
-        tasks.append(run_module("api_detector", detect_apis(url, config.timeout)))
-        names.append("api_detector")
-    if should_run("pagination"):
-        tasks.append(run_module("pagination", detect_pagination(url, config.timeout)))
-        names.append("pagination")
+    for name, coro in [
+        ("legal",         analyze_legal(url, config.timeout)),
+        ("classifier",    classify_page(url, config.timeout)),
+        ("auth_detector", detect_auth(url, config.timeout)),
+        ("api_detector",  detect_apis(url, config.timeout)),
+        ("pagination",    detect_pagination(url, config.timeout)),
+    ]:
+        if should_run(name):
+            phase1_tasks.append(run_module(name, coro))
+            phase1_names.append(name)
+
+    phase1_results = await asyncio.gather(*phase1_tasks)
+
+    # Extract api_detector endpoints to pass to antibot
+    api_endpoints_for_probe = None
+    for name, (result, status) in zip(phase1_names, phase1_results):
+        if name == "api_detector" and status.status == "OK" and result:
+            api_endpoints_for_probe = result.endpoints
+
+    # Phase 2: antibot with endpoint context
+    phase2_results = []
+    phase2_names = []
+
     if should_run("antibot"):
-        tasks.append(run_module("antibot", analyze_antibot(url, config.timeout + 15)))
-        names.append("antibot")
+        antibot_result = await run_module(
+            "antibot",
+            analyze_antibot(url, config.timeout + 15, api_endpoints=api_endpoints_for_probe),
+        )
+        phase2_results.append(antibot_result)
+        phase2_names.append("antibot")
 
-    results = await asyncio.gather(*tasks)
+    names = phase1_names + phase2_names
+    results = list(phase1_results) + phase2_results
 
     # Map results to report fields
     report_kwargs: dict = {}
