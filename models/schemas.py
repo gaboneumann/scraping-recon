@@ -157,10 +157,18 @@ class AntibotDimensions(BaseModel):
     ip_reputation: IpRepDimension
 
 
+class ApiEndpointProbeResult(BaseModel):
+    url: str
+    endpoint_type: Literal["REST", "GraphQL"]
+    tls: TlsDimension
+    rate_limiting: RateLimitDimension
+
+
 class AntibotResult(BaseModel):
     overall_score: float = Field(ge=0.0, le=10.0)
     overall_level: Literal["NONE", "LOW", "MEDIUM", "HIGH", "EXTREME"]
     dimensions: AntibotDimensions
+    api_endpoint_probes: list[ApiEndpointProbeResult] = Field(default_factory=list)
 
 
 class RecommenderResult(BaseModel):
