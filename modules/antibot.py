@@ -13,12 +13,15 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
 from models.schemas import (
     AntibotDimensions,
     AntibotResult,
+    ApiEndpoint,
+    ApiEndpointProbeResult,
     CaptchaDimension,
     FingerprintDimension,
     HoneypotDimension,
@@ -64,10 +67,15 @@ HONEYPOT_SELECTORS = [
 ]
 
 
-async def analyze_antibot(url: str, timeout: float = 30.0) -> AntibotResult:
+async def analyze_antibot(
+    url: str,
+    timeout: float = 30.0,
+    api_endpoints: list[ApiEndpoint] | None = None,
+) -> AntibotResult:
     """
     Run all 7 anti-bot detection dimensions and return an AntibotResult.
-    Maximum 12 requests: 1 base + 8 rate-limit + 3 TLS.
+    Maximum 12 requests base: 1 base + 8 rate-limit + 3 TLS.
+    If api_endpoints provided, probes up to 2 REST/GraphQL endpoints (6 requests each).
     """
     # Base fetch for HTML-based dimensions
     status, headers, html, _ = await make_request(url, ua=UA_CHROME, timeout=10.0)
@@ -106,6 +114,18 @@ async def analyze_antibot(url: str, timeout: float = 30.0) -> AntibotResult:
         "EXTREME"
     )
 
+    # Probe API endpoints if provided (max 2, REST/GraphQL only)
+    endpoint_probes: list[ApiEndpointProbeResult] = []
+    if api_endpoints:
+        base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        probeable = [
+            ep for ep in api_endpoints
+            if ep.type in ("REST", "GraphQL") and ep.url.startswith("/")
+        ][:2]
+        for ep in probeable:
+            probe = await _probe_api_endpoint(base + ep.url, ep.type, timeout=10.0)
+            endpoint_probes.append(probe)
+
     return AntibotResult(
         overall_score=overall_score,
         overall_level=level,
@@ -118,6 +138,7 @@ async def analyze_antibot(url: str, timeout: float = 30.0) -> AntibotResult:
             honeypots=honeypot_dim,
             ip_reputation=ip_rep_dim,
         ),
+        api_endpoint_probes=endpoint_probes,
     )
 
 
@@ -244,6 +265,62 @@ def _detect_honeypots(soup: BeautifulSoup) -> HoneypotDimension:
         score=score,
         count=count,
         locations=locations[:10],
+    )
+
+
+async def _probe_api_endpoint(
+    url: str,
+    endpoint_type: str,
+    timeout: float = 10.0,
+) -> ApiEndpointProbeResult:
+    """TLS + quick rate-limit probe (3 requests) against a single API endpoint."""
+    tls_dim, rate_dim = await asyncio.gather(
+        run_tls_test(url, timeout=timeout),
+        _test_rate_limiting_quick(url, timeout=timeout),
+    )
+    return ApiEndpointProbeResult(
+        url=url,
+        endpoint_type=endpoint_type,
+        tls=tls_dim,
+        rate_limiting=rate_dim,
+    )
+
+
+async def _test_rate_limiting_quick(
+    url: str,
+    timeout: float = 10.0,
+) -> RateLimitDimension:
+    """3-request burst to detect fast rate limiting on API endpoints."""
+    triggered_at: int | None = None
+    error_type: str | None = None
+    score = 0
+
+    for i in range(3):
+        try:
+            status, _, _, _ = await make_request(url, timeout=timeout)
+            if status == 429:
+                triggered_at = i
+                error_type = "HTTP 429"
+                score = 3
+                break
+            if status in (401, 403):
+                error_type = f"HTTP {status} (auth required)"
+                score = 1
+                break
+            if status in (503, 520):
+                error_type = f"HTTP {status}"
+                score = 2
+                break
+        except Exception as e:
+            error_type = str(e)[:60]
+            score = 1
+            break
+        await asyncio.sleep(0.3)
+
+    return RateLimitDimension(
+        score=score,
+        triggered_at=triggered_at,
+        error_type=error_type,
     )
 
 
