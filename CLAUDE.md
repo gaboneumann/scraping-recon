@@ -26,7 +26,11 @@ python main.py scan --url <url> --skip antibot,legal     # saltar módulos
 python main.py scan --url <url> --deep --json -o out.json  # --deep: flag aceptado, lógica Playwright pendiente (BACKLOG E7)
 python main.py --help
 
-# No hay test suite ni linter configurados — verificación manual
+# Testing
+make test                                                # unit + integration + coverage
+make test-smoke                                          # smoke tests (pipeline completo)
+make update-snapshots                                    # regenerar snapshots
+venv/bin/pytest tests/unit/ -v                          # solo unit tests
 ```
 
 ---
@@ -36,7 +40,8 @@ python main.py --help
 1. Activar venv
 2. Correr el módulo afectado con `--module <name>` como smoke test
 3. Correr scan completo en un site conocido para regression check
-4. No hay typecheck/lint automatizado — revisar manualmente antes de commit
+4. Correr `make test` para verificar que no hay regresiones
+5. No hay typecheck/lint automatizado — revisar manualmente antes de commit
 
 ---
 
