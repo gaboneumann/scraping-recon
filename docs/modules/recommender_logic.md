@@ -36,6 +36,8 @@ Referenciado desde `docs/build/STEP_7_recommender.md` y `modules/recommender.py`
 
 ## Rama 2.5 — E-commerce platform (detalles)
 
+> ⚠️ **NOT IMPLEMENTED** — Lógica pendiente. Ver BACKLOG E1–E7 para el roadmap de implementación.
+
 ```python
 cms = classifier.cms
 
@@ -84,6 +86,8 @@ else:  # VTEX, PrestaShop, OpenCart, etc.
 ---
 
 ## Flags adicionales (evaluar siempre)
+
+> ⚠️ **NOT IMPLEMENTED** — Los campos de schema referenciados aquí no existen aún en `models/schemas.py`. Ver BACKLOG E1–E6.
 
 ```python
 if antibot.dimensions.rate_limiting.score >= 2:
