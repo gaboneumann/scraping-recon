@@ -49,5 +49,5 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 | ID | Estado | Descripción |
 |----|--------|-------------|
-| T1 | 🔲 | **Integration tests contra URLs reales** — Suite de 3-4 URLs conocidas y estables (un Shopify, un WooCommerce, un sitio estático, un sitio con Cloudflare) con outputs esperados versionados en git. Los tests unitarios actuales verifican lógica interna pero no detectan regresiones reales causadas por cambios en señales HTML, nuevos patrones de WAF, o plataformas que cambian su estructura. Este tipo de test es el que más valor aporta para una herramienta de recon. |
+| T1 | ✅ | **Integration tests contra URLs reales** — 3 sitios: `books.toscrape.com` (estático, baseline), `buscalibre.cl/libros/computacion` (PrestaShop, API-driven), `mercadolibre.cl` (Cloudfront WAF, cookie consent). 36 assertions con skip automático ante challenge pages. `make test-real`. |
 | T2 | 🔲 | **Señales faltantes por plataforma** — Mantener un log de falsos negativos: sitios reales donde el clasificador erró (e.g., WooCommerce sin `wc-cart-fragments`, Cloudflare con fingerprint no detectado). Cada caso real documentado se convierte en una fixture y un test. |
