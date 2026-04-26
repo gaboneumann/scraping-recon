@@ -1,0 +1,14 @@
+{
+  "primary_library": "Playwright async",
+  "secondary_library": "Selenium",
+  "managed_api_suggested": false,
+  "managed_api_options": [],
+  "additional_flags": [
+    "curl_cffi Chrome/Safari impersonation required",
+    "Browser automation mandatory for full crawl",
+    "DYNAMIC site \u2014 run with --deep flag (Playwright) for complete XHR endpoint map"
+  ],
+  "estimated_complexity": 7,
+  "estimated_dev_time": "3-7 days",
+  "full_stack_recommendation": "Use Playwright async with Selenium as fallback. Key considerations: curl_cffi Chrome/Safari impersonation required; Browser automation mandatory for full crawl; DYNAMIC site \u2014 run with --deep flag (Playwright) for complete XHR endpoint map. Complexity: 7/10."
+}

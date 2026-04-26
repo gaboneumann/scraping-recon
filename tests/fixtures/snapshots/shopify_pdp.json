@@ -1,0 +1,12 @@
+{
+  "primary_library": "httpx SSR + Playwright opcional",
+  "secondary_library": "Scrapy + Playwright plugin",
+  "managed_api_suggested": false,
+  "managed_api_options": [],
+  "additional_flags": [
+    "JSON-LD available (Product) \u2014 parse structured data instead of HTML"
+  ],
+  "estimated_complexity": 6,
+  "estimated_dev_time": "3-5 days",
+  "full_stack_recommendation": "Use httpx SSR + Playwright opcional with Scrapy + Playwright plugin as fallback. Key considerations: JSON-LD available (Product) \u2014 parse structured data instead of HTML. Complexity: 6/10."
+}

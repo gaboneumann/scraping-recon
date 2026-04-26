@@ -1,0 +1,12 @@
+{
+  "primary_library": "httpx + BeautifulSoup4",
+  "secondary_library": "Scrapy",
+  "managed_api_suggested": false,
+  "managed_api_options": [],
+  "additional_flags": [
+    "JSON-LD available (Article) \u2014 parse structured data instead of HTML"
+  ],
+  "estimated_complexity": 2,
+  "estimated_dev_time": "hours",
+  "full_stack_recommendation": "Use httpx + BeautifulSoup4 with Scrapy as fallback. Key considerations: JSON-LD available (Article) \u2014 parse structured data instead of HTML. Complexity: 2/10."
+}

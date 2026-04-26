@@ -1,0 +1,6 @@
+<html><head></head><body>
+<div id="app" data-reactroot=""></div>
+<script>
+fetch("/api/v1/products").then(r => r.json()).then(d => renderProducts(d));
+</script>
+</body></html>

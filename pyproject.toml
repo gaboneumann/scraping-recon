@@ -1,0 +1,25 @@
+[project]
+name = "scraping-recon"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "pytest-cov>=5"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--tb=short"
+markers = ["smoke: full pipeline smoke tests"]
+
+[tool.coverage.run]
+omit = [
+    "main.py",
+    "report/terminal.py",
+    "utils/tls_test.py",
+    "venv/*",
+    "tests/*",
+]
+
+[tool.coverage.report]
+fail_under = 80

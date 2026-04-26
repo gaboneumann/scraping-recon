@@ -1,0 +1,12 @@
+{
+  "primary_library": "curl_cffi + BeautifulSoup4",
+  "secondary_library": "httpx rotating UA",
+  "managed_api_suggested": false,
+  "managed_api_options": [],
+  "additional_flags": [
+    "Cookie consent wall \u2014 click accept before scraping content"
+  ],
+  "estimated_complexity": 4,
+  "estimated_dev_time": "1-3 days",
+  "full_stack_recommendation": "Use curl_cffi + BeautifulSoup4 with httpx rotating UA as fallback. Key considerations: Cookie consent wall \u2014 click accept before scraping content. Complexity: 4/10."
+}
