@@ -1,17 +1,42 @@
 # CLAUDE.md
 
-> **Para el agente**: Este archivo es tu contrato de construcción.
-> Sigue el orden exacto. No combines pasos. No implementes lo que no te pido.
-> Cada sección termina con un [CHECKPOINT] — detente ahí y muestra output.
+> **Para el agente**: Este proyecto está en modo iteración. Lee este archivo completo antes de actuar.
+> Para cambios complejos (>1 módulo): usa `/sdd-new → /sdd-ff → /sdd-apply`.
+> Para errores que cometas: `mem_save(type: "feedback", project: "scraping_recon")` — no modifiques este archivo.
 
 ---
 
-## Environment
+## Project Overview
 
-- OS: Ubuntu 24 (WSL2) on Windows
-- Python: 3.12.3
-- Venv: `source venv/bin/activate` (ya creado)
-- Working directory: `~/workspace/projects/web_scraping/scraping_recon`
+- **Objective**: CLI de reconocimiento pre-scraping. Analiza una URL y reporta legalidad, tipo de sitio, APIs expuestas, paginación, autenticación, antibot y recomendaciones de estrategia.
+- **Stack**: Python 3.12 · Typer · httpx + curl_cffi · BeautifulSoup4 · Pydantic · Rich · Playwright (--deep)
+- **Architecture**: `main.py` → `modules/` (7 módulos: 6 async + recommender síncrono) → `models/schemas.py` (fuente de verdad) → `report/`
+- **Environment**: Ubuntu 24.04 — primary dev
+
+---
+
+## Commands Reference
+
+```sh
+source venv/bin/activate
+
+python main.py scan --url <url>                          # scan completo
+python main.py scan --url <url> --module <name>          # módulo individual (smoke test)
+python main.py scan --url <url> --skip antibot,legal     # saltar módulos
+python main.py scan --url <url> --deep --json -o out.json  # --deep: flag aceptado, lógica Playwright pendiente (BACKLOG E7)
+python main.py --help
+
+# No hay test suite ni linter configurados — verificación manual
+```
+
+---
+
+## Development Workflow
+
+1. Activar venv
+2. Correr el módulo afectado con `--module <name>` como smoke test
+3. Correr scan completo en un site conocido para regression check
+4. No hay typecheck/lint automatizado — revisar manualmente antes de commit
 
 ---
 
@@ -21,7 +46,7 @@
 1. Lee la sección completa antes de escribir código
 2. Implementa exactamente lo descrito — ni más, ni menos
 3. Ejecuta y muestra el output real del terminal
-4. Espera mi confirmación antes de continuar
+4. Espera confirmación antes de continuar
 5. Si una dependencia falla, reporta el error exacto y propón alternativa
 6. Si encuentras ambigüedad, pregunta antes de asumir
 ```
@@ -31,6 +56,32 @@
 - Type hints en todas las funciones
 - Docstring en todos los módulos y funciones públicas
 - Sin estado global — configuración siempre como parámetro explícito
+
+---
+
+## Plan Mode / Parallel Work / SDD
+
+- Usar plan mode para cualquier cambio que toque más de 1 módulo
+- Para mejoras del backlog: `/sdd-new → /sdd-ff → /sdd-apply`
+- Subagentes para exploración paralela de módulos independientes
+- Solo un agente edita un archivo a la vez
+
+---
+
+## Things Claude Should NOT Do
+
+- No superar el budget HTTP por módulo (ver tabla abajo)
+- No modificar `models/schemas.py` sin revisar todos los módulos que lo usan
+- No hacer commit sin correr un smoke test (`--module <name>`)
+- No implementar mejoras del backlog sin que el usuario lo indique explícitamente
+
+---
+
+## Project-Specific Patterns
+
+- Todos los módulos async reciben `(url: str, timeout: float)` como mínimo; `auth_detector` también acepta `html`, `headers`, y `redirect_chain`. `recommender` es síncrono.
+- `run_module()` en `utils/graceful.py` es el wrapper estándar para todos los módulos
+- Backlog activo en `docs/BACKLOG.md` — consultarlo antes de proponer mejoras
 
 ---
 
@@ -50,48 +101,14 @@ Instala en este orden. Si falla, usa el fallback indicado.
 | wafw00f        | `pip install wafw00f`             | usar header-based detection solamente           |
 | playwright     | `pip install playwright` + `playwright install chromium` | sin fallback — requerido para `--deep` mode |
 
-> Instala y verifica cada paquete antes de usarlo. Si `import X` falla en runtime, reporta y aplica el fallback — nunca silencies el error.
-> Playwright requiere dos pasos: primero el paquete Python, luego el binario del browser (`playwright install chromium`).
-
----
-
-## Project Structure
-
-```
-scraping_recon/
-├── main.py                  ← CLI entry point (Typer)
-├── config.py                ← Settings, defaults, constants
-├── models/
-│   ├── __init__.py
-│   └── schemas.py           ← Pydantic models — fuente de verdad de todos los outputs
-├── modules/
-│   ├── __init__.py
-│   ├── legal.py
-│   ├── classifier.py
-│   ├── auth_detector.py
-│   ├── antibot.py
-│   ├── api_detector.py
-│   ├── pagination.py
-│   └── recommender.py
-├── report/
-│   ├── __init__.py
-│   ├── terminal.py
-│   └── json_export.py
-├── utils/
-│   ├── __init__.py
-│   ├── http.py              ← HTTP client factory (httpx + curl_cffi)
-│   ├── tls_test.py          ← TLS fingerprint comparison
-│   └── graceful.py          ← Module runner con timeout + exception capture
-└── docs/
-    ├── build/               ← Specs de cada STEP (leer antes de implementar)
-    └── modules/             ← Lógica extendida (recommender, etc.)
-```
+> Si `import X` falla en runtime, reporta y aplica el fallback — nunca silencies el error.
+> Playwright requiere dos pasos: primero el paquete Python, luego el binario del browser.
 
 ---
 
 ## HTTP Request Budget
 
-**Máximo 25 requests por scan completo.**
+**Máximo 27 requests por scan completo.**
 
 | Módulo        | Max requests | Notas                                          |
 |---------------|-------------|------------------------------------------------|
@@ -106,20 +123,25 @@ scraping_recon/
 
 ---
 
-## Build Steps
+## Project Structure
 
-Lee el archivo de spec completo antes de implementar cada STEP.
-
-| STEP | Archivo de spec | Qué implementa |
-|------|----------------|----------------|
-| 0 | [docs/build/STEP_0_schemas.md](docs/build/STEP_0_schemas.md) | `models/schemas.py` — Pydantic contracts |
-| 1 | [docs/build/STEP_1_utils.md](docs/build/STEP_1_utils.md) | `utils/graceful.py` + `utils/http.py` |
-| 2 | [docs/build/STEP_2_legal.md](docs/build/STEP_2_legal.md) | `modules/legal.py` |
-| 3 | [docs/build/STEP_3_classifier.md](docs/build/STEP_3_classifier.md) | `modules/classifier.py` |
-| 4 | [docs/build/STEP_4_api_detector.md](docs/build/STEP_4_api_detector.md) | `modules/api_detector.py` |
-| 5 | [docs/build/STEP_5_pagination.md](docs/build/STEP_5_pagination.md) | `modules/pagination.py` |
-| 5b | [docs/build/STEP_5b_auth_detector.md](docs/build/STEP_5b_auth_detector.md) | `modules/auth_detector.py` |
-| 6 | [docs/build/STEP_6_antibot.md](docs/build/STEP_6_antibot.md) | `modules/antibot.py` |
-| 7 | [docs/build/STEP_7_recommender.md](docs/build/STEP_7_recommender.md) | `modules/recommender.py` — ver también [docs/modules/recommender_logic.md](docs/modules/recommender_logic.md) |
-| 8 | [docs/build/STEP_8_main.md](docs/build/STEP_8_main.md) | `main.py` + `report/` |
-| 9 | [docs/build/STEP_9_requirements.md](docs/build/STEP_9_requirements.md) | `requirements.txt` |
+```
+scraping_recon/
+├── main.py                  ← CLI entry point (Typer)
+├── config.py                ← Settings, defaults, constants
+├── models/
+│   └── schemas.py           ← Pydantic models — fuente de verdad de todos los outputs
+├── modules/
+│   ├── legal.py · classifier.py · auth_detector.py
+│   ├── antibot.py · api_detector.py · pagination.py · recommender.py
+├── report/
+│   ├── terminal.py · json_export.py
+├── utils/
+│   ├── http.py              ← HTTP client factory (httpx + curl_cffi)
+│   ├── tls_test.py          ← TLS fingerprint comparison
+│   └── graceful.py          ← Module runner con timeout + exception capture
+└── docs/
+    ├── BACKLOG.md           ← Mejoras pendientes — leer antes de proponer cambios
+    ├── build/               ← Specs originales de cada STEP (referencia)
+    └── modules/             ← Lógica extendida (recommender, etc.)
+```
