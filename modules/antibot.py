@@ -117,6 +117,7 @@ async def analyze_antibot(
     fingerprint_dim = _detect_fingerprinting(html)
     honeypot_dim = _detect_honeypots(soup)
     ip_rep_dim = _assess_ip_reputation(h)
+    behavioral_vendors = _detect_behavioral_vendors(html, h, soup)
 
     score = sum([
         waf_dim.score,
@@ -163,7 +164,172 @@ async def analyze_antibot(
             ip_reputation=ip_rep_dim,
         ),
         api_endpoint_probes=endpoint_probes,
+        behavioral_vendors=behavioral_vendors,
     )
+
+
+def _extract_scripts(html: str, soup: BeautifulSoup) -> list[str]:
+    """Extract all script content: inline bodies + src attribute values."""
+    scripts = []
+    for tag in soup.find_all("script"):
+        if tag.string:
+            scripts.append(tag.string)
+        if tag.get("src"):
+            scripts.append(tag.get("src"))
+    return scripts
+
+
+def _extract_cookies(headers: dict[str, str]) -> list[str]:
+    """Extract cookie names from Set-Cookie headers."""
+    cookies = []
+    for value in headers.values():
+        if isinstance(value, str):
+            parts = value.split(";")
+            if parts:
+                cookie_pair = parts[0].strip()
+                if "=" in cookie_pair:
+                    cookie_name = cookie_pair.split("=", 1)[0].strip()
+                    cookies.append(cookie_name)
+    return cookies
+
+
+def _detect_datadome(html: str, headers: dict[str, str], soup: BeautifulSoup) -> BehavioralVendor | None:
+    """Detect DataDome behavioral vendor via script, cookie, or header patterns."""
+    patterns = BEHAVIORAL_VENDOR_PATTERNS.get("DataDome", {})
+    detected_via = []
+
+    scripts = _extract_scripts(html, soup)
+    script_pattern = patterns.get("script", "")
+    if script_pattern and any(re.search(script_pattern, s, re.IGNORECASE) for s in scripts):
+        detected_via.append("script")
+
+    cookies = _extract_cookies(headers)
+    cookie_pattern = patterns.get("cookie", "")
+    if cookie_pattern and any(re.match(cookie_pattern, c, re.IGNORECASE) for c in cookies):
+        detected_via.append("cookie")
+
+    header_pattern = patterns.get("header", "")
+    if header_pattern and any(re.search(header_pattern, v, re.IGNORECASE) for v in headers.values()):
+        detected_via.append("header")
+
+    if not detected_via:
+        return None
+
+    confidence = "high" if "script" in detected_via else ("medium" if "cookie" in detected_via else "low")
+    return BehavioralVendor(name="DataDome", confidence=confidence, detected_via=detected_via)
+
+
+def _detect_perimeterx(html: str, headers: dict[str, str], soup: BeautifulSoup) -> BehavioralVendor | None:
+    """Detect PerimeterX behavioral vendor via script, cookie, or header patterns."""
+    patterns = BEHAVIORAL_VENDOR_PATTERNS.get("PerimeterX", {})
+    detected_via = []
+
+    scripts = _extract_scripts(html, soup)
+    script_pattern = patterns.get("script", "")
+    if script_pattern and any(re.search(script_pattern, s, re.IGNORECASE) for s in scripts):
+        detected_via.append("script")
+
+    cookies = _extract_cookies(headers)
+    cookie_pattern = patterns.get("cookie", "")
+    if cookie_pattern and any(re.match(cookie_pattern, c, re.IGNORECASE) for c in cookies):
+        detected_via.append("cookie")
+
+    header_pattern = patterns.get("header", "")
+    if header_pattern and any(re.search(header_pattern, v, re.IGNORECASE) for v in headers.values()):
+        detected_via.append("header")
+
+    if not detected_via:
+        return None
+
+    confidence = "high" if "script" in detected_via else ("medium" if "cookie" in detected_via else "low")
+    return BehavioralVendor(name="PerimeterX", confidence=confidence, detected_via=detected_via)
+
+
+def _detect_akamai(html: str, headers: dict[str, str], soup: BeautifulSoup) -> BehavioralVendor | None:
+    """Detect Akamai behavioral vendor via script, cookie, or header patterns."""
+    patterns = BEHAVIORAL_VENDOR_PATTERNS.get("Akamai", {})
+    detected_via = []
+
+    scripts = _extract_scripts(html, soup)
+    script_pattern = patterns.get("script", "")
+    if script_pattern and any(re.search(script_pattern, s, re.IGNORECASE) for s in scripts):
+        detected_via.append("script")
+
+    cookies = _extract_cookies(headers)
+    cookie_pattern = patterns.get("cookie", "")
+    if cookie_pattern and any(re.match(cookie_pattern, c, re.IGNORECASE) for c in cookies):
+        detected_via.append("cookie")
+
+    header_pattern = patterns.get("header", "")
+    if header_pattern and any(re.search(header_pattern, v, re.IGNORECASE) for v in headers.values()):
+        detected_via.append("header")
+
+    if not detected_via:
+        return None
+
+    confidence = "high" if "script" in detected_via else ("medium" if "cookie" in detected_via else "low")
+    return BehavioralVendor(name="Akamai", confidence=confidence, detected_via=detected_via)
+
+
+def _detect_kasada(html: str, headers: dict[str, str], soup: BeautifulSoup) -> BehavioralVendor | None:
+    """Detect Kasada behavioral vendor via script, cookie, or header patterns."""
+    patterns = BEHAVIORAL_VENDOR_PATTERNS.get("Kasada", {})
+    detected_via = []
+
+    scripts = _extract_scripts(html, soup)
+    script_pattern = patterns.get("script", "")
+    if script_pattern and any(re.search(script_pattern, s, re.IGNORECASE) for s in scripts):
+        detected_via.append("script")
+
+    cookies = _extract_cookies(headers)
+    cookie_pattern = patterns.get("cookie", "")
+    if cookie_pattern and any(re.match(cookie_pattern, c, re.IGNORECASE) for c in cookies):
+        detected_via.append("cookie")
+
+    header_pattern = patterns.get("header", "")
+    if header_pattern and any(re.search(header_pattern, v, re.IGNORECASE) for v in headers.values()):
+        detected_via.append("header")
+
+    if not detected_via:
+        return None
+
+    confidence = "high" if "script" in detected_via else ("medium" if "cookie" in detected_via else "low")
+    return BehavioralVendor(name="Kasada", confidence=confidence, detected_via=detected_via)
+
+
+def _detect_behavioral_vendors(html: str, headers: dict[str, str], soup: BeautifulSoup) -> list[BehavioralVendor]:
+    """Orchestrate behavioral vendor detection across all vendors."""
+    vendors = []
+
+    try:
+        datadome = _detect_datadome(html, headers, soup)
+        if datadome:
+            vendors.append(datadome)
+    except Exception as e:
+        logger.debug("DataDome detection failed: %s", e)
+
+    try:
+        perimeterx = _detect_perimeterx(html, headers, soup)
+        if perimeterx:
+            vendors.append(perimeterx)
+    except Exception as e:
+        logger.debug("PerimeterX detection failed: %s", e)
+
+    try:
+        akamai = _detect_akamai(html, headers, soup)
+        if akamai:
+            vendors.append(akamai)
+    except Exception as e:
+        logger.debug("Akamai detection failed: %s", e)
+
+    try:
+        kasada = _detect_kasada(html, headers, soup)
+        if kasada:
+            vendors.append(kasada)
+    except Exception as e:
+        logger.debug("Kasada detection failed: %s", e)
+
+    return sorted(vendors, key=lambda v: {"high": 0, "medium": 1, "low": 2}[v.confidence])
 
 
 def _detect_waf(
