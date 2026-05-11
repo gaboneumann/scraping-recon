@@ -22,6 +22,7 @@ from models.schemas import (
     AntibotResult,
     ApiEndpoint,
     ApiEndpointProbeResult,
+    BehavioralVendor,
     CaptchaDimension,
     FingerprintDimension,
     HoneypotDimension,
@@ -65,6 +66,29 @@ HONEYPOT_SELECTORS = [
     "[style*='left:-9999'] a",
     "[style*='left: -9999'] a",
 ]
+
+BEHAVIORAL_VENDOR_PATTERNS: dict[str, dict[str, str]] = {
+    "DataDome": {
+        "script": r"datadome\.com|window\._dd|_dd_rum|datadome.*\.js",
+        "cookie": r"^(px2|px_profile|_dd|_pxAppId)$",
+        "header": r"x-datadome|datadome",
+    },
+    "PerimeterX": {
+        "script": r"window\._pxAppId|_pxAppId\s*=|px-cdn\.net|perimeterx|humansec",
+        "cookie": r"^(_pxAppId|_pxamb|_pxamb_b)$",
+        "header": r"pxcaptcha|_px2",
+    },
+    "Akamai": {
+        "script": r"akamai|bot_manager|_akm|bmak|akam-sw\.js|akamaihd\.net/bot",
+        "cookie": r"^(akm_user|abck)$",
+        "header": r"x-akamai-transformed",
+    },
+    "Kasada": {
+        "script": r"kasada\.io|kpsdk",
+        "cookie": r"^kpsdk.*$",
+        "header": r"x-kasada-info",
+    },
+}
 
 
 async def analyze_antibot(

@@ -190,11 +190,20 @@ class ApiEndpointProbeResult(BaseModel):
     rate_limiting: RateLimitDimension
 
 
+class BehavioralVendor(BaseModel):
+    """Behavioral vendor detection signal."""
+
+    name: str
+    confidence: Literal["high", "medium", "low"]
+    detected_via: list[str]
+
+
 class AntibotResult(BaseModel):
     overall_score: float = Field(ge=0.0, le=10.0)
     overall_level: Literal["NONE", "LOW", "MEDIUM", "HIGH", "EXTREME"]
     dimensions: AntibotDimensions
     api_endpoint_probes: list[ApiEndpointProbeResult] = Field(default_factory=list)
+    behavioral_vendors: list[BehavioralVendor] = Field(default_factory=list)
 
 
 class RecommenderResult(BaseModel):
