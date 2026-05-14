@@ -1,17 +1,20 @@
 # CLAUDE.md
 
-> **Para el agente**: Este proyecto está en modo iteración. Lee este archivo completo antes de actuar.
-> Para cambios complejos (>1 módulo): usa `/sdd-new → /sdd-ff → /sdd-apply`.
-> Para errores que cometas: `mem_save(type: "feedback", project: "scraping_recon")` — no modifiques este archivo.
-
 ---
 
 ## Project Overview
 
-- **Objective**: CLI de reconocimiento pre-scraping. Analiza una URL y reporta legalidad, tipo de sitio, APIs expuestas, paginación, autenticación, antibot y recomendaciones de estrategia.
+**Primary Goal**: Pre-scraping intelligence tool for **e-commerce/retail sites** (static, dynamic, hybrid). Analyzes a URL and returns **actionable recommendations** to minimize scraping development time.
+
+**What It Does**: Reports on 7 dimensions (legal scope, site type, APIs, pagination, auth, antibot, e-commerce signals) so you can decide: *"Is it worth scraping? What library should I use? What complexity am I in for?"*
+
+**What It Doesn't Do**: It's NOT a scraper. It doesn't execute complex anti-detection strategies—it *flags* them so you know what to implement in your own scraper.
+
 - **Stack**: Python 3.12 · Typer · httpx + curl_cffi · BeautifulSoup4 · Pydantic · Rich · Playwright (--deep)
-- **Architecture**: `main.py` → `modules/` (7 módulos: 6 async + recommender síncrono) → `models/schemas.py` (fuente de verdad) → `report/`
+- **Architecture**: `main.py` → `modules/` (7 modules: 6 async + recommender sync) → `models/schemas.py` (source of truth) → `report/`
 - **Environment**: Ubuntu 24.04 — primary dev
+- **Scope**: E-commerce/retail sites across 3 render modes (SSR, CSR, SSR+CSR hybrid)
+- **Target Users**: Scrapers building bots for new e-commerce targets (need fast reconnaissance)
 
 ---
 
@@ -20,11 +23,11 @@
 ```sh
 source venv/bin/activate
 
-python main.py scan --url <url>                          # scan completo
-python main.py scan --url <url> --module <name>          # módulo individual (smoke test)
-python main.py scan --url <url> --skip antibot,legal     # saltar módulos
-python main.py scan --url <url> --deep --json -o out.json  # --deep: flag aceptado, lógica Playwright pendiente (BACKLOG E7)
-python main.py --help
+python main.py --url <url>                               # scan completo
+python main.py --url <url> --module <name>               # módulo individual (smoke test)
+python main.py --url <url> --skip antibot,legal          # saltar módulos
+python main.py --url <url> --deep --json -o out.json     # --deep: flag aceptado, lógica Playwright pendiente (BACKLOG E7)
+python main.py --help                                    # mostrar todas las opciones
 
 # Testing
 make test                                                # unit + integration + coverage
@@ -32,6 +35,25 @@ make test-smoke                                          # smoke tests (pipeline
 make update-snapshots                                    # regenerar snapshots
 venv/bin/pytest tests/unit/ -v                          # solo unit tests
 ```
+
+---
+
+## Mapeo Módulo → Decisión
+
+Cada módulo responde una pregunta específica que necesitas antes de scrapear:
+
+| Módulo | Pregunta | Output | Impacto en Decisión |
+|--------|----------|--------|-----------------|
+| **legal** | ¿Es legal scrapear? | robots.txt, sitemap, análisis ToS | **PARAR o CONTINUAR** |
+| **classifier** | ¿Qué tipo de sitio? | SSR/CSR/Hybrid, CMS, frameworks, locales | **Elegir librería** (httpx vs Playwright) |
+| **api_detector** | ¿Hay APIs internas? | Endpoints REST/GraphQL encontrados | **Usar API en lugar de HTML** |
+| **auth_detector** | ¿Auth requerida? | Login form, OAuth, paywall detectados | **Complejidad de session management** |
+| **pagination** | ¿Cómo iterar? | QUERY_PARAM, link-rel, cursor, infinite-scroll | **Estrategia de paginación** |
+| **antibot** | ¿Qué protecciones? | WAF, TLS fingerprint, behavioral, rate-limit scores | **Selección de tools** (curl_cffi, proxy, Playwright) |
+| **e-commerce** (E1-E6) | ¿Señales specifícas? | Price mechanism, cart, variants, reviews API, inventory | **Estrategia de scrape** (decisiones por producto) |
+| **recommender** | ¿Qué debería hacer? | Lib primary, fallback, complejidad (1-10), flags | **Estimación de tiempo de desarrollo** |
+
+Ver [docs/BACKLOG.md](docs/BACKLOG.md) para detalles de señales e-commerce (fases E1-E7).
 
 ---
 
@@ -70,6 +92,23 @@ venv/bin/pytest tests/unit/ -v                          # solo unit tests
 - Para mejoras del backlog: `/sdd-new → /sdd-ff → /sdd-apply`
 - Subagentes para exploración paralela de módulos independientes
 - Solo un agente edita un archivo a la vez
+
+---
+
+## Cómo Leer el Reporte
+
+El output tiene 8 secciones. **Léelas en orden**:
+
+1. **Legal Scope** — Detente aquí si ToS prohíbe scraping
+2. **Page Classification** — Te dice: SSR/CSR/Hybrid, frameworks JS, CMS, infraestructura
+3. **Auth & Access** — Te dice: login requerido, OAuth, paywall, cookie consent
+4. **API Endpoints** — URLs de APIs internas (úsalas en lugar de HTML cuando sea posible)
+5. **Pagination** — Cómo el sitio itera resultados (query param, link-rel, cursor, infinite scroll)
+6. **Anti-Bot Protection** — Score 0-10 (LOW/MEDIUM/HIGH/EXTREME); qué librerías podrían fallar
+7. **Recommendations** — Librería PRIMARY, fallback, estimación de complejidad (1-10), flags clave
+8. **Modules Status** — Cuáles módulos exitosos/fallidos y por qué
+
+**⚠️ Nota**: Si el sitio es dinámico (CSR/Hybrid), el score antibot **está probablemente subestimado** sin `--deep`. Ver [docs/BACKLOG.md](docs/BACKLOG.md) — Phase 3 (E7).
 
 ---
 

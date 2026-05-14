@@ -20,6 +20,9 @@ from models.schemas import (
     PdpSampleResult,
     SecurityHeadersResult,
     StructuredDataResult,
+    VariantInfo,
+    ReviewsProviderInfo,
+    InventoryInfo,
 )
 from utils.http import UA_CHROME, make_request, compare_mobile_desktop
 
@@ -99,6 +102,33 @@ ECOMMERCE_SIGNALS: dict[str, list[str]] = {
     ],
 }
 
+# E3 Variant detection patterns
+VARIANT_PATTERNS: dict[str, str] = {
+    "dropdown": r'<select\s+[^>]*(?:name|id)="[^"]*(?:variant|option)',
+    "radio": r'<input\s+type="radio"[^>]*(?:name|id)="[^"]*(?:variant|option)',
+    "swatch": r'<(?:div|span)[^>]*(?:class|data-swatch)="[^"]*swatch',
+    "button": r'<button[^>]*(?:data-variant-id|variant-option)',
+    "ajax_endpoint": r'(?:/api)?/(?:variants?|options?|swatches?)(?:\?|/|")',
+}
+
+# E5 Reviews provider detection patterns
+REVIEWS_PATTERNS: dict[str, list[str]] = {
+    "bazaarvoice": ["BV.", "bvApi", "bv-mloaded", "bvSignIn"],
+    "yotpo": ["yotpoElement", "window.yotpo", "yotpoReviews", "yotpo.com"],
+    "trustpilot": ["trustbox", "trustpilot.com", "tp-widget"],
+    "ekomi": ["ekomi", "eKomi", "eKomiIntegration"],
+    "google": ["google-customer-reviews", "GoogleCustomerReviews", "google.com/reviews"],
+}
+
+# E6 Inventory mechanism detection patterns
+INVENTORY_PATTERNS: dict[str, str] = {
+    "server_side_attr": r'data-(?:stock|inventory|quantity)\s*=\s*"[^"]*\d',
+    "server_side_hardcoded": r'(?:in stock|out of stock|stock:\s*\d+)',
+    "ajax_update": r'(?:setInterval|setTimeout|updateInventory|refreshInventory)',
+    "ajax_fetch": r'fetch\(["\'].*(?:inventory|stock|availability)',
+    "ajax_endpoint": r'(?:/api)?/(?:inventory|stock|availability)',
+}
+
 CDN_SIGNALS: dict[str, list[str]] = {
     "Cloudflare": ["cf-ray", "__cf_bm"],
     "Vercel":     ["x-vercel-id"],
@@ -157,10 +187,36 @@ async def classify_page(url: str, timeout: float = 15.0) -> ClassifierResult:
     ecommerce = _detect_ecommerce_signals(html, soup, cms)
     is_ecommerce_platform = cms in ECOMMERCE_PLATFORMS
 
-    # PDP fetch (1 extra request, only if e-commerce signals found)
+    # E4: Multi-PDP sampling (2-3 samples, only if e-commerce signals found)
+    pdp_samples: list[PdpSampleResult] = []
+    pdp_consistency: dict[str, float] = {}
     pdp_sample: PdpSampleResult | None = None
+
     if ecommerce.is_ecommerce:
-        pdp_sample = await _fetch_pdp_sample(url, html, headers, timeout)
+        pdp_samples = await _fetch_pdp_samples(url, html, headers, timeout, sample_count=2)
+        if pdp_samples:
+            pdp_sample = pdp_samples[0]  # Backward compatibility
+
+            # Compute consistency metrics
+            if len(pdp_samples) > 1:
+                # Percentage of samples with matching WAF headers
+                matching_headers = sum(
+                    1 for s in pdp_samples[1:] if s.same_protection_as_category
+                ) + (1 if pdp_samples[0].same_protection_as_category else 0)
+                waf_pct = (matching_headers / len(pdp_samples)) * 100
+
+                # Render mode agreement
+                server_side_count = sum(1 for s in pdp_samples if s.renders_server_side)
+                render_agreement = (
+                    server_side_count == len(pdp_samples) or
+                    server_side_count == 0
+                )
+
+                pdp_consistency = {
+                    "matching_waf_headers_pct": waf_pct,
+                    "render_mode_agreement": render_agreement,
+                    "samples_analyzed": len(pdp_samples),
+                }
 
     # Classification logic
     page_type, confidence = _classify(
@@ -189,6 +245,8 @@ async def classify_page(url: str, timeout: float = 15.0) -> ClassifierResult:
         ecommerce=ecommerce,
         is_ecommerce_platform=is_ecommerce_platform,
         pdp_sample=pdp_sample,
+        pdp_samples=pdp_samples,
+        pdp_consistency=pdp_consistency,
     )
 
 
@@ -325,6 +383,211 @@ def _estimate_crawl_scope(
     return count, estimated
 
 
+def _detect_variants(soup: BeautifulSoup) -> VariantInfo:
+    """
+    E3: Detect product variant selection mechanism from HTML.
+    Returns VariantInfo with selector type, estimated count, and confidence.
+    """
+    from models.schemas import VariantInfo
+
+    has_variants = False
+    selector_type = None
+    variant_count_estimate = None
+    requires_ajax = False
+    ajax_endpoint = None
+    confidence = "low"
+
+    html = str(soup)
+
+    # Check for dropdown selects
+    dropdowns = soup.find_all("select", {"name": re.compile(r"variant|option", re.I)})
+    if dropdowns:
+        has_variants = True
+        selector_type = "dropdown"
+        # Count option elements
+        options = [opt for dd in dropdowns for opt in dd.find_all("option")]
+        variant_count_estimate = len(options) if options else None
+        confidence = "high" if len(dropdowns) >= 1 else "medium"
+
+    # Check for radio buttons
+    if not has_variants:
+        radios = soup.find_all("input", {"type": "radio", "name": re.compile(r"variant|option", re.I)})
+        if radios:
+            has_variants = True
+            selector_type = "radio"
+            variant_count_estimate = len(radios)
+            confidence = "high"
+
+    # Check for swatch selectors
+    if not has_variants:
+        swatches = soup.find_all(["div", "span"], {"class": re.compile(r"swatch", re.I)})
+        if swatches:
+            has_variants = True
+            selector_type = "swatch"
+            variant_count_estimate = len(swatches)
+            confidence = "high"
+
+    # Check for button-based selectors
+    if not has_variants:
+        buttons = soup.find_all("button", {"data-variant-id": True})
+        if not buttons:
+            buttons = soup.find_all("button", {"class": re.compile(r"variant|option", re.I)})
+        if buttons:
+            has_variants = True
+            selector_type = "button"
+            variant_count_estimate = len(buttons)
+            confidence = "high"
+
+    # Check for AJAX endpoint patterns
+    if has_variants:
+        for pattern in [r'/variants?[?/"]', r'/options?[?/"]', r'/swatches[?/"]']:
+            if re.search(pattern, html, re.I):
+                requires_ajax = True
+                # Try to extract endpoint URL
+                match = re.search(r'["\']([^"\']*(?:variants?|options?|swatches)[^"\']*)["\']', html)
+                if match:
+                    ajax_endpoint = match.group(1)
+                break
+
+    return VariantInfo(
+        has_variants=has_variants,
+        selector_type=selector_type,
+        variant_count_estimate=variant_count_estimate,
+        requires_ajax=requires_ajax,
+        ajax_endpoint=ajax_endpoint,
+        confidence=confidence,
+    )
+
+
+def _detect_reviews_provider(soup: BeautifulSoup, html: str) -> ReviewsProviderInfo:
+    """
+    E5: Detect external reviews provider from script tags and window objects.
+    Returns ReviewsProviderInfo with provider name and confidence.
+    """
+    from models.schemas import ReviewsProviderInfo
+
+    provider = None
+    found = False
+    widget_script_found = False
+    api_endpoint = None
+    confidence = "low"
+    detected_signals = []
+
+    # Scan script tags for provider markers
+    scripts = [tag.get_text() for tag in soup.find_all("script")]
+    all_scripts = " ".join(scripts)
+
+    for prov, patterns in REVIEWS_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in html or pattern in all_scripts:
+                if not provider:
+                    provider = prov
+                detected_signals.append(pattern)
+                if ".com/" in pattern or "js" in pattern or "api" in pattern:
+                    widget_script_found = True
+                    confidence = "high"
+                else:
+                    confidence = "medium" if confidence == "low" else confidence
+
+    # Check for Google Reviews iframe or widget
+    if "google-customer-reviews" in html or "GoogleCustomerReviews" in all_scripts:
+        provider = "google"
+        found = True
+        widget_script_found = True
+        confidence = "high"
+
+    # Check for internal reviews section if no external provider found
+    if not provider:
+        review_elements = soup.find_all(["div", "section"], {"class": re.compile(r"review|rating", re.I)})
+        review_elements += soup.find_all(["div"], {"id": re.compile(r"review|rating", re.I)})
+        if review_elements:
+            provider = "internal"
+            found = True
+            confidence = "medium"
+
+    found = provider is not None
+
+    return ReviewsProviderInfo(
+        provider=provider,
+        found=found,
+        api_endpoint=api_endpoint,
+        widget_script_found=widget_script_found,
+        confidence=confidence,
+    )
+
+
+def _detect_inventory_mechanism(html: str, soup: BeautifulSoup) -> InventoryInfo:
+    """
+    E6: Detect inventory stock mechanism (SERVER_SIDE vs AJAX).
+    Returns InventoryInfo with mechanism type and confidence.
+    """
+    from models.schemas import InventoryInfo
+
+    mechanism = "UNKNOWN"
+    stock_element_found = False
+    update_pattern = None
+    real_time = False
+    confidence = "low"
+    indicators = []
+
+    # Check for server-side stock attributes
+    stock_elements = soup.find_all(attrs={"data-stock": True})
+    stock_elements += soup.find_all(attrs={"data-inventory": True})
+    stock_elements += soup.find_all(attrs={"data-quantity": True})
+
+    if stock_elements:
+        mechanism = "SERVER_SIDE"
+        stock_element_found = True
+        confidence = "high"
+        indicators.append("stock_data_attribute")
+
+    # Check for hardcoded stock in HTML text
+    if not stock_element_found:
+        if re.search(r'(?:in\s+stock|out\s+of\s+stock|stock:\s*\d+)', html, re.I):
+            mechanism = "SERVER_SIDE"
+            stock_element_found = True
+            confidence = "medium"
+            indicators.append("hardcoded_stock_text")
+
+    # Check for AJAX update patterns
+    ajax_patterns = [
+        r'setInterval\s*\(\s*[\'"]?(?:updateInventory|refreshStock)',
+        r'fetch\s*\(\s*[\'"].*(?:inventory|stock|availability)',
+        r'(?:updateInventory|refreshStock|loadInventory)\s*\(',
+    ]
+
+    for pattern in ajax_patterns:
+        if re.search(pattern, html, re.I):
+            mechanism = "AJAX"
+            real_time = True
+            confidence = "high"
+            indicators.append(pattern)
+            break
+
+    # Check for AJAX endpoints
+    if re.search(r'(?:/api)?/(?:inventory|stock|availability)(?:\?|/)', html, re.I):
+        if mechanism == "UNKNOWN":
+            mechanism = "AJAX"
+        real_time = True
+        confidence = "high"
+        indicators.append("ajax_endpoint")
+
+    # Check for loading/placeholder indicators
+    if re.search(r'(?:loading|placeholder|pending)["\']?\s*:\s*(?:true|1)', html, re.I):
+        if mechanism == "UNKNOWN":
+            mechanism = "AJAX"
+        confidence = "medium"
+        indicators.append("loading_placeholder")
+
+    return InventoryInfo(
+        mechanism=mechanism,
+        stock_element_found=stock_element_found,
+        update_pattern=update_pattern,
+        real_time=real_time,
+        confidence=confidence,
+    )
+
+
 async def _dns_lookup(url: str) -> dict[str, str]:
     """Resolve DNS records for the domain. Returns empty dict if unavailable."""
     try:
@@ -406,6 +669,15 @@ def _detect_ecommerce_signals(
         signal_counts.get("price_signals", 0)
     )
 
+    # E3: Variant detection
+    variants = _detect_variants(soup)
+
+    # E5: Reviews provider detection
+    reviews_provider = _detect_reviews_provider(soup, html)
+
+    # E6: Inventory mechanism detection
+    inventory = _detect_inventory_mechanism(html, soup)
+
     return EcommerceSignals(
         is_ecommerce=is_ecommerce,
         platform=platform,
@@ -415,6 +687,9 @@ def _detect_ecommerce_signals(
         has_faceted_nav=has_faceted_nav,
         has_product_schema=has_product_schema,
         signal_counts=signal_counts,
+        variants=variants,
+        reviews_provider=reviews_provider,
+        inventory=inventory,
     )
 
 
@@ -505,13 +780,10 @@ def _compute_price_score(
     return None
 
 
-async def _fetch_pdp_sample(
-    category_url: str,
-    html: str,
-    category_headers: dict[str, str],
-    timeout: float,
-) -> PdpSampleResult | None:
-    """Extract 1 PDP link from category HTML and fetch it. Returns None if no PDP found."""
+def _extract_pdp_links(
+    category_url: str, html: str
+) -> list[str]:
+    """Extract all product page links from category HTML."""
     soup = BeautifulSoup(html, "lxml")
     base = urlparse(category_url)
     pdp_pattern = re.compile(
@@ -519,20 +791,25 @@ async def _fetch_pdp_sample(
         re.IGNORECASE,
     )
 
-    pdp_url: str | None = None
+    pdp_urls: list[str] = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
         parsed = urlparse(href)
         # Resolve relative URLs
         if not parsed.scheme:
             href = f"{base.scheme}://{base.netloc}{href}" if href.startswith("/") else href
-        if pdp_pattern.search(href):
-            pdp_url = href
-            break
+        if pdp_pattern.search(href) and href not in pdp_urls:
+            pdp_urls.append(href)
 
-    if not pdp_url:
-        return None
+    return pdp_urls
 
+
+async def _fetch_single_pdp(
+    pdp_url: str,
+    category_headers: dict[str, str],
+    timeout: float,
+) -> PdpSampleResult | None:
+    """Fetch and analyze a single PDP URL."""
     try:
         _, pdp_headers, pdp_html, pdp_ms = await make_request(
             pdp_url, ua=UA_CHROME, timeout=timeout
@@ -575,6 +852,59 @@ async def _fetch_pdp_sample(
         response_time_ms=pdp_ms,
         same_protection_as_category=same_protection,
     )
+
+
+async def _fetch_pdp_samples(
+    category_url: str,
+    html: str,
+    category_headers: dict[str, str],
+    timeout: float,
+    sample_count: int = 2,
+) -> list[PdpSampleResult]:
+    """
+    E4: Extract multiple PDP links and fetch sample products.
+    Returns list of PdpSampleResult. Computes consistency metrics.
+    """
+    import random
+    import asyncio
+
+    pdp_urls = _extract_pdp_links(category_url, html)
+    if not pdp_urls:
+        return []
+
+    # If insufficient products, return single sample
+    if len(pdp_urls) < 2:
+        sample_urls = pdp_urls
+    else:
+        # Random sample up to sample_count
+        sample_urls = random.sample(pdp_urls, min(sample_count, len(pdp_urls)))
+
+    # Fetch samples concurrently
+    tasks = [
+        _fetch_single_pdp(url, category_headers, timeout / max(len(sample_urls), 1))
+        for url in sample_urls
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Filter out None results
+    samples = [r for r in results if r is not None]
+    return samples
+
+
+async def _fetch_pdp_sample(
+    category_url: str,
+    html: str,
+    category_headers: dict[str, str],
+    timeout: float,
+) -> PdpSampleResult | None:
+    """
+    Backward-compatible wrapper: fetch single PDP sample.
+    Delegates to _fetch_pdp_samples() and returns first result.
+    """
+    samples = await _fetch_pdp_samples(
+        category_url, html, category_headers, timeout, sample_count=1
+    )
+    return samples[0] if samples else None
 
 
 _HEADLESS_FRAMEWORKS = {"Next.js", "Nuxt", "Gatsby", "Remix"}

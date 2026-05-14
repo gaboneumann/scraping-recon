@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
-from models.schemas import ApiDetectorResult, ApiEndpoint
+from models.schemas import ApiDetectorResult, ApiEndpoint, SearchApiResult
 from utils.http import UA_CHROME, make_request
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,22 @@ ASSET_EXTENSIONS = {".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg",
                     ".woff", ".woff2", ".ttf", ".ico", ".webp", ".map"}
 
 INTROSPECTION_QUERY = '{"query":"{__typename}"}'
+
+# E2 Search API patterns
+SEARCH_API_PATTERNS: dict[str, list[str]] = {
+    "algolia": [
+        "algoliasearch", "algolia.com", "AA.PLACES_INDEX_NAME",
+        "algoliaConfig", "window.algolia"
+    ],
+    "elasticsearch": [
+        "elasticsearch", "kibana", "_search", "elastic.co",
+        "opensearch", "opensearch_dashboards"
+    ],
+    "custom": [
+        "/api/search", "/api/products", "/api/catalog",
+        "/api/catalog/search", "/search/api"
+    ],
+}
 
 
 async def detect_apis(
@@ -128,6 +144,78 @@ async def detect_apis(
         state_blobs_found=state_blobs,
         recommendation=recommendation,
         endpoints_may_be_incomplete=may_be_incomplete,
+    )
+
+
+async def _detect_search_api(
+    html: str,
+    endpoints: list[ApiEndpoint],
+    base_url: str,
+    timeout: float,
+) -> SearchApiResult:
+    """
+    E2: Detect search API provider (Algolia, Elasticsearch, custom).
+    Pattern detection first (0 HTTP cost); optional probe if endpoint found.
+    Returns SearchApiResult with confidence scoring.
+    """
+    api_found = False
+    api_type = None
+    endpoint_url = None
+    authenticated = None
+    confidence = "low"
+    detection_method = "pattern"
+
+    # Pattern-based detection
+    for provider, patterns in SEARCH_API_PATTERNS.items():
+        for pattern in patterns:
+            if pattern in html:
+                api_found = True
+                api_type = provider
+                confidence = "medium"
+                break
+        if api_found:
+            break
+
+    # Try to find endpoint URL from detected endpoints or state blobs
+    if api_found and api_type:
+        # Look for matching endpoint in discovered API list
+        search_candidates = [
+            e.url for e in endpoints
+            if any(term in e.url.lower() for term in ["search", "algolia", "elasticsearch"])
+        ]
+
+        if search_candidates:
+            endpoint_url = search_candidates[0]
+
+            # Optional: probe the endpoint if it looks valid
+            if endpoint_url and not any(x in endpoint_url for x in ["localhost", "example.com", "test"]):
+                try:
+                    # Construct test query
+                    probe_url = endpoint_url
+                    if "?" not in endpoint_url:
+                        probe_url = f"{endpoint_url}?q=test" if "/" not in endpoint_url.split("://")[1] else endpoint_url
+
+                    import httpx
+                    async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+                        resp = await client.get(probe_url)
+                        if resp.status_code == 200:
+                            confidence = "high"
+                            authenticated = False
+                            detection_method = "probe"
+                        elif resp.status_code in (401, 403):
+                            confidence = "high"
+                            authenticated = True
+                            detection_method = "probe"
+                except Exception as e:
+                    logger.debug("Search API probe failed: %s", e)
+
+    return SearchApiResult(
+        found=api_found,
+        api_type=api_type,
+        endpoint_url=endpoint_url,
+        authenticated=authenticated,
+        confidence=confidence,
+        detection_method=detection_method,
     )
 
 

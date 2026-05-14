@@ -54,7 +54,7 @@ class SecurityHeadersResult(BaseModel):
 
 
 class EcommerceSignals(BaseModel):
-    """E-commerce detection signals derived from HTML — no additional requests."""
+    """E-commerce detection signals derived from HTML — no additional requests (except E2 probe)."""
 
     is_ecommerce: bool
     platform: str | None
@@ -64,6 +64,62 @@ class EcommerceSignals(BaseModel):
     has_faceted_nav: bool
     has_product_schema: bool
     signal_counts: dict[str, int]
+
+    # E2: Search API
+    search_api: SearchApiResult | None = None
+
+    # E3: Variants
+    variants: VariantInfo | None = None
+
+    # E5: Reviews
+    reviews_provider: ReviewsProviderInfo | None = None
+
+    # E6: Inventory
+    inventory: InventoryInfo | None = None
+
+
+class SearchApiResult(BaseModel):
+    """E2: Search API detection result."""
+
+    found: bool
+    api_type: Literal["algolia", "elasticsearch", "custom"] | None = None
+    endpoint_url: str | None = None
+    authenticated: bool | None = None
+    confidence: Literal["high", "medium", "low"] = "low"
+    detection_method: Literal["pattern", "probe", "both"] | None = None
+
+
+class VariantInfo(BaseModel):
+    """E3: Product variant detection."""
+
+    has_variants: bool = False
+    selector_type: Literal["dropdown", "radio", "swatch", "button", "unknown"] | None = None
+    variant_count_estimate: int | None = None
+    requires_ajax: bool = False
+    ajax_endpoint: str | None = None
+    confidence: Literal["high", "medium", "low"] = "low"
+
+
+class InventoryInfo(BaseModel):
+    """E6: Inventory mechanism classification."""
+
+    mechanism: Literal["SERVER_SIDE", "AJAX", "UNKNOWN"] = "UNKNOWN"
+    stock_element_found: bool = False
+    update_pattern: str | None = None
+    real_time: bool = False
+    confidence: Literal["high", "medium", "low"] = "low"
+
+
+class ReviewsProviderInfo(BaseModel):
+    """E5: Reviews provider detection."""
+
+    provider: Literal[
+        "bazaarvoice", "yotpo", "trustpilot", "ekomi", "google", "internal", None
+    ] | None = None
+    found: bool = False
+    api_endpoint: str | None = None
+    widget_script_found: bool = False
+    confidence: Literal["high", "medium", "low"] = "low"
 
 
 class PdpSampleResult(BaseModel):
@@ -99,6 +155,10 @@ class ClassifierResult(BaseModel):
     ecommerce: EcommerceSignals | None = None
     is_ecommerce_platform: bool = False
     pdp_sample: PdpSampleResult | None = None
+
+    # E4: Multiple PDP samples
+    pdp_samples: list[PdpSampleResult] = []
+    pdp_consistency: dict[str, float] = {}
 
 
 class ApiEndpoint(BaseModel):
