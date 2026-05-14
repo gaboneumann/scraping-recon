@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Custom React SPA Store</title>
+    <meta name="description" content="Custom React-based e-commerce store">
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "Custom Gadget",
+        "offers": {
+            "@type": "Offer",
+            "priceCurrency": "USD",
+            "price": "299.99"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Custom SPA with API endpoints in global scope -->
+    <script>
+    // Custom React SPA e-commerce store
+    window.__INITIAL_STATE__ = {
+        product: {
+            id: "custom-gadget-001",
+            name: "Custom Gadget",
+            price: 299.99,
+            currency: "USD",
+            variants: [
+                { id: "v1", label: "Standard", sku: "GADGET-STD" },
+                { id: "v2", label: "Pro", sku: "GADGET-PRO" },
+                { id: "v3", label: "Ultra", sku: "GADGET-ULTRA" }
+            ],
+            inventory: {
+                total: 100,
+                available: 45,
+                reserved: 55
+            }
+        },
+        api: {
+            // Custom API endpoints (not standard framework)
+            baseUrl: "https://api.custom-store.example.com/v1",
+            productPrice: "/products/{id}/price",
+            inventory: "/products/{id}/inventory",
+            cartAdd: "/cart/add",
+            reviews: "/products/{id}/reviews"
+        }
+    };
+
+    // Simulate infinite scroll pagination API
+    window.__PAGINATION_CONFIG__ = {
+        strategy: "infinite-scroll",
+        apiEndpoint: "/api/v1/products/browse",
+        pageSize: 20,
+        nextCursorParam: "after"
+    };
+    </script>
+
+    <!-- React bundle would be loaded here -->
+    <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+</body>
+</html>

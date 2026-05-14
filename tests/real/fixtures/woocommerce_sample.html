@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WooCommerce Product Sample</title>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "Test Product",
+        "image": "https://example.com/test-product.jpg",
+        "description": "A sample WooCommerce product",
+        "brand": {
+            "@type": "Brand",
+            "name": "TestBrand"
+        },
+        "offers": {
+            "@type": "Offer",
+            "url": "https://shop.example.com/products/test-product",
+            "priceCurrency": "USD",
+            "price": "99.99",
+            "priceValidUntil": "2026-12-31",
+            "availability": "https://schema.org/InStock",
+            "seller": {
+                "@type": "Organization",
+                "name": "Test Shop"
+            }
+        },
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.5",
+            "reviewCount": "95"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div class="woocommerce-page">
+        <!-- Cart button -->
+        <button class="add_to_cart_button" data-product-id="123">Add to Cart</button>
+
+        <!-- Price element -->
+        <span class="price"><span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">$</span>99.99</bdi></span></span>
+
+        <!-- Variants (attributes) -->
+        <div class="variations">
+            <table cellpadding="10" class="variations_form">
+                <tbody>
+                    <tr>
+                        <td class="label">
+                            <label for="pa_size">Size</label>
+                        </td>
+                        <td class="value">
+                            <select id="pa_size" class="attribute-select" name="attribute_pa_size">
+                                <option value="">Choose an option</option>
+                                <option value="small">Small</option>
+                                <option value="medium">Medium</option>
+                                <option value="large">Large</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="label">
+                            <label for="pa_color">Color</label>
+                        </td>
+                        <td class="value">
+                            <select id="pa_color" class="attribute-select" name="attribute_pa_color">
+                                <option value="">Choose an option</option>
+                                <option value="red">Red</option>
+                                <option value="blue">Blue</option>
+                                <option value="green">Green</option>
+                            </select>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Inventory indicators -->
+        <p class="stock in-stock">
+            <span class="woocommerce-product-details__short-description">
+                Stock: <span class="stock-quantity">50</span> in stock
+            </span>
+        </p>
+
+        <!-- Cart API hint (would be triggered via AJAX) -->
+        <script>
+        // WooCommerce cart API would be called to:
+        // POST /wp-json/wc/store/v1/cart/items
+        // with {product_id: 123, quantity: 1}
+        var wc_product_data = {
+            id: 123,
+            type: 'simple',
+            attributes: ['pa_size', 'pa_color'],
+            cart_api_endpoint: '/wp-json/wc/store/v1/cart/items'
+        };
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Language" content="pt-BR">
+    <title>Loja Regional Brasil</title>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "Produto Regional",
+        "offers": {
+            "@type": "Offer",
+            "priceCurrency": "BRL",
+            "price": "199,90"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div class="loja-regional">
+        <!-- Regional locale detection -->
+        <meta property="og:locale" content="pt_BR">
+
+        <!-- Brazilian price format: R$ 199,90 -->
+        <span class="preco-produto">R$ 199,90</span>
+
+        <!-- Installment payment info (common in Brazil) -->
+        <div class="parcelamento">
+            <span class="parcelado">ou 12x de R$ 16,65</span>
+            <span class="juros">sem juros</span>
+        </div>
+
+        <!-- Regional variant selector -->
+        <select class="variantes-produto" name="variantes">
+            <option value="tamanho-p">Tamanho P</option>
+            <option value="tamanho-m">Tamanho M</option>
+            <option value="tamanho-g">Tamanho G</option>
+            <option value="tamanho-gg">Tamanho GG</option>
+        </select>
+
+        <!-- Regional cart button -->
+        <button class="btn-adicionar-carrinho" data-produto-id="br-123">
+            Adicionar ao Carrinho
+        </button>
+
+        <!-- Regional inventory in Portuguese -->
+        <p class="estoque-info">
+            <span class="quantidade-estoque">12</span> produtos em estoque
+        </p>
+
+        <!-- Regional API configuration -->
+        <script>
+        var storeConfig = {
+            locale: "pt_BR",
+            currency: "BRL",
+            country: "BR",
+            taxType: "ICMS",
+            paymentMethods: ["credit_card", "boleto", "pix"],
+            api: {
+                cartEndpoint: "/api/carrinho/adicionar",
+                priceEndpoint: "/api/preco/{produto_id}",
+                inventoryEndpoint: "/api/estoque/{produto_id}"
+            }
+        };
+        </script>
+    </div>
+</body>
+</html>

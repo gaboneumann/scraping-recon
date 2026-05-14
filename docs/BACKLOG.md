@@ -4,12 +4,13 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 ---
 
-## Estado del proyecto (May 14, 2026 — PHASE 3 COMPLETE)
+## Estado del proyecto (May 14, 2026 — PHASE 4 COMPLETE)
 
 **Core: 100% implementado** — 7 módulos + utils + report + CLI operacional.  
-**Tests:** 256 tests (unit + integration) · 86%+ coverage · `make test` ✅.  
+**Tests:** 371+ tests (unit + integration + smoke + real + e7) · 80%+ coverage · `make test` ✅.  
 **Phase 2 COMPLETE:** E2-E6 e-commerce depth features fully implemented and tested.  
-**Phase 3 COMPLETE:** E7 deep mode Playwright XHR interception, 43 tasks, full test coverage.
+**Phase 3 COMPLETE:** E7 deep mode Playwright XHR interception, 43 tasks, full test coverage.  
+**Phase 4 COMPLETE:** Test coverage T2 smoke suite — snapshot fixes, false negative log system, platform expansion (WooCommerce, Shopify, custom SPA, regional), E7+api_detector edge cases.
 
 | Componente | Estado | Líneas | Notas |
 |---|---|---|---|
@@ -32,7 +33,7 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 | **Phase 1 — Antibot avanzado** | B1–B7 | ✅ COMPLETE | Ampliación de detección antibot: vendors (B1), fingerprinting patterns (B2/B3/B7), PoW (B4), behavioral listeners (B5), journey probes (B6). 2 nuevas dimensiones. 9 total (era 7). |
 | **Phase 2 — E-commerce depth** | E1–E6 | ✅ COMPLETE | Price reliability scoring (E1) + Search API (E2) + Variants (E3) + Multi-PDP (E4) + Reviews provider (E5) + Inventory mechanism (E6). Fully implemented with 48 unit tests. |
 | **Phase 3 — Deep Mode / Playwright** | E7 | ✅ COMPLETE | XHR interception (price JS, infinite scroll, cart API), 3 observation windows, E7Result schema, 43 tasks, 28 new tests (20 unit + 8 integration), 256 total tests. Graceful error handling: returns None if Playwright unavailable. |
-| **Phase 4 — Test coverage** | T2 + smoke suite | 🔲 | Validation continua de señales por plataforma. |
+| **Phase 4 — Test coverage** | T2 + smoke suite | ✅ COMPLETE | Snapshot fixes (behavioral_detection + journey_probes), T2 false negative log system (CSV + fixture generator), E7 integration tests (9 tests), platform expansion (15 real tests: WooCommerce/Shopify/custom SPA/regional), api_detector edge cases (7 new tests). |
 
 ---
 
@@ -82,4 +83,4 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 | ID | Estado | Descripción |
 |----|--------|-------------|
 | T1 | ✅ | **Integration tests contra URLs reales** — 3 sitios: `books.toscrape.com` (estático, baseline), `buscalibre.cl/libros/computacion` (PrestaShop, API-driven), `mercadolibre.cl` (Cloudfront WAF, cookie consent). 36 assertions con skip automático ante challenge pages. `make test-real`. |
-| T2 | 🔲 | **Señales faltantes por plataforma** — Mantener un log de falsos negativos: sitios reales donde el clasificador erró (e.g., WooCommerce sin `wc-cart-fragments`, Cloudflare con fingerprint no detectado). Cada caso real documentado se convierte en una fixture y un test. |
+| T2 | ✅ | **Señales faltantes por plataforma** — Log de falsos negativos: `docs/T2_false_negative_log.csv` con formato (platform, url, signal, expected, actual, discovered_date, status). Fixture generator: `scripts/csv_to_fixture.py` convierte CSV a pytest tests. 4 plataformas implementadas: WooCommerce (4 tests), Shopify (4 tests), custom SPA (4 tests), regional Brazil (3 tests). |

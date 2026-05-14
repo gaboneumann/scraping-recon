@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Shopify Product Sample</title>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "Premium T-Shirt",
+        "image": "https://cdn.shopify.com/s/test-product.jpg",
+        "description": "A premium quality t-shirt",
+        "brand": {
+            "@type": "Brand",
+            "name": "ShopifyBrand"
+        },
+        "offers": {
+            "@type": "Offer",
+            "url": "https://test-shop.myshopify.com/products/premium-tshirt",
+            "priceCurrency": "USD",
+            "price": "49.99",
+            "availability": "https://schema.org/InStock"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="__next">
+        <div class="product">
+            <!-- Shopify product data in window object -->
+            <script>
+            window.Shopify = {
+                shop: "test-shop.myshopify.com",
+                theme: {
+                    name: "Dawn",
+                    id: 123456789
+                },
+                currency: {
+                    locale: "en-US"
+                },
+                checkout_url: "/checkout",
+                routes: {
+                    cart_url: "/cart",
+                    product_reviews_url: "#Reviews-template--" + window.product.id
+                }
+            };
+            </script>
+
+            <!-- Price -->
+            <span class="price price--highlight">
+                <span class="price__sale">
+                    <span class="price-item price-item--sale">$49.99</span>
+                </span>
+            </span>
+
+            <!-- Add to cart button -->
+            <button id="ProductSubmitButton-template" type="submit" class="button">
+                Add to bag
+            </button>
+
+            <!-- Variant selector -->
+            <div id="variants" class="productView-variants-container">
+                <select id="product-select-template" class="productView-options-select">
+                    <option value="40123456789:Blue:Small">Blue / Small</option>
+                    <option value="40123456790:Red:Small">Red / Small</option>
+                    <option value="40123456791:Blue:Medium">Blue / Medium</option>
+                    <option value="40123456792:Red:Medium">Red / Medium</option>
+                </select>
+            </div>
+
+            <!-- Inventory status -->
+            <div class="productView-info-item">
+                <span id="ProductAvailability-template" class="inventory-count inventory-count--low">
+                    Only 3 left - order soon
+                </span>
+            </div>
+
+            <!-- Reviews API would be fetched from -->
+            <script>
+            // Shopify Storefront API endpoint for reviews/ratings:
+            // GraphQL: GET https://test-shop.myshopify.com/api/2024-01/graphql.json
+            // Query: ProductReviews on product object
+            var product = {
+                id: "gid://shopify/Product/123456789",
+                title: "Premium T-Shirt",
+                variants: [
+                    { id: "gid://shopify/ProductVariant/40123456789", title: "Blue / Small", price: 4999 },
+                    { id: "gid://shopify/ProductVariant/40123456790", title: "Red / Small", price: 4999 }
+                ]
+            };
+            </script>
+        </div>
+    </div>
+</body>
+</html>
