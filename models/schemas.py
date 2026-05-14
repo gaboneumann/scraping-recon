@@ -59,6 +59,7 @@ class EcommerceSignals(BaseModel):
     is_ecommerce: bool
     platform: str | None
     price_mechanism: Literal["CLIENT_SIDE", "SERVER_SIDE", "UNKNOWN"]
+    price_reliability_score: int | None = None
     cart_architecture: Literal["AJAX_FRAGMENTS", "AJAX_API", "SECTION_CACHE", "UNKNOWN"]
     has_faceted_nav: bool
     has_product_schema: bool

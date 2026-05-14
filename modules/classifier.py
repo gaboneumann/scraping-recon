@@ -392,15 +392,117 @@ def _detect_ecommerce_signals(
 
     platform = cms if cms in ECOMMERCE_PLATFORMS else None
 
+    # Price reliability scoring
+    json_ld_price = _extract_json_ld_price(html)
+    html_price_text: str | None = None
+    for el in soup.find_all(class_=re.compile(r'price', re.I)):
+        text = el.get_text(strip=True)
+        if text and re.search(r'\d', text):
+            html_price_text = text
+            break
+    price_reliability_score = _compute_price_score(
+        json_ld_price,
+        html_price_text,
+        signal_counts.get("price_signals", 0)
+    )
+
     return EcommerceSignals(
         is_ecommerce=is_ecommerce,
         platform=platform,
         price_mechanism=price_mechanism,  # type: ignore[arg-type]
+        price_reliability_score=price_reliability_score,
         cart_architecture=cart_architecture,  # type: ignore[arg-type]
         has_faceted_nav=has_faceted_nav,
         has_product_schema=has_product_schema,
         signal_counts=signal_counts,
     )
+
+
+def _extract_json_ld_price(html: str) -> float | None:
+    """Extract numeric price from JSON-LD Product/Offer.
+    Returns first valid numeric price found, or None."""
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "lxml")
+        for tag in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(tag.string or "")
+                if isinstance(data, dict):
+                    if data.get("@type") == "Product" or "Product" in (data.get("@type") if isinstance(data.get("@type"), list) else []):
+                        offers = data.get("offers")
+                        if isinstance(offers, dict):
+                            price = offers.get("price")
+                            if isinstance(price, (int, float)):
+                                return float(price)
+                            if isinstance(price, str) and price:
+                                try:
+                                    return float(price)
+                                except ValueError:
+                                    pass
+                        elif isinstance(offers, list):
+                            for offer in offers:
+                                if isinstance(offer, dict):
+                                    price = offer.get("price")
+                                    if isinstance(price, (int, float)):
+                                        return float(price)
+                                    if isinstance(price, str) and price:
+                                        try:
+                                            return float(price)
+                                        except ValueError:
+                                            pass
+            except (json.JSONDecodeError, TypeError):
+                pass
+    except Exception:
+        pass
+    return None
+
+
+def _is_placeholder_price(value: str) -> bool:
+    """Detect placeholder/unavailable price patterns (case-insensitive, whitespace-tolerant).
+    Patterns: 0, 0.00, 0,00, tbd, contact, call for, na, n/a, --, ?"""
+    if not value:
+        return False
+    normalized = value.lower().strip()
+    # Exact match patterns
+    if normalized in ("tbd", "na", "n/a", "--", "?"):
+        return True
+    # Prefix patterns (allows words after the pattern)
+    if normalized.startswith("contact") or normalized.startswith("call for"):
+        return True
+    # Numeric zero patterns (including comma as decimal separator)
+    if re.match(r'^0+\.?0*$|^0+,?0*$', normalized):
+        return True
+    return False
+
+
+def _compute_price_score(
+    json_ld_price: float | None,
+    html_price_text: str | None,
+    signal_count: int
+) -> int | None:
+    """Compute price reliability score (0-100 or None).
+    Decision table (first match wins):
+    - JSON-LD price + real value → 90
+    - JSON-LD price + placeholder → 30
+    - HTML visible + real value → 80
+    - HTML visible + placeholder → 25
+    - Price signals present but no text → 40
+    - No price signals → None"""
+    if json_ld_price is not None:
+        if _is_placeholder_price(str(json_ld_price)):
+            return 30
+        return 90
+
+    if html_price_text is not None:
+        if _is_placeholder_price(html_price_text):
+            return 25
+        if re.search(r'\d', html_price_text):
+            return 80
+
+    if signal_count > 0:
+        return 40
+
+    return None
 
 
 async def _fetch_pdp_sample(
