@@ -7,13 +7,13 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 ## Estado del proyecto (May 14, 2026)
 
 **Core: 100% implementado** — 7 módulos + utils + report + CLI operacional.  
-**Tests:** 266 tests (unit + integration + real URL) · 86.94% coverage · `make test` ✅.  
+**Tests:** 250 tests (unit + integration) · 86.22% coverage · `make test` ✅.  
 **Gap crítico:** `--deep` acepta el flag pero no tiene implementación — cero código Playwright.
 
 | Componente | Estado | Líneas | Notas |
 |---|---|---|---|
 | `classifier` | ✅ completo | 623 | EcommerceSignals + price_reliability_score (E1), PDP sample, platform-aware |
-| `antibot` | ✅ completo | 538 | WAF, rate-limit, TLS, fingerprinting, API probes, behavioral vendors (B1) |
+| `antibot` | ✅ completo | 652 | WAF, rate-limit, TLS, fingerprinting (B2/B3/B7), PoW (B4), behavioral listeners (B5), journey probes (B6), behavioral vendors (B1) |
 | `recommender` | ✅ completo | 180 | Función pura, árbol de 5 ramas |
 | `legal` | ✅ completo | 219 | robots.txt, sitemap, ToS |
 | `auth_detector` | ✅ completo | 175 | login form, OAuth, paywall, cookie consent |
@@ -25,12 +25,12 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 ### Prioridad de fases
 
-| Fase | IDs | Criterio |
-|---|---|---|
-| **Phase 1 — Antibot avanzado** | B1–B7 | Observable desde HTML estático, no requiere Playwright |
-| **Phase 2 — E-commerce depth** | E1–E6 | HTML estático + probes HTTP simples |
-| **Phase 3 — Deep Mode / Playwright** | E7 + implementar `config.deep` | Desbloquea la recomendación `--deep flag` que ya aparece en output |
-| **Phase 4 — Test coverage** | T2 + smoke suite | Validation continua |
+| Fase | IDs | Estado | Criterio |
+|---|---|---|---|
+| **Phase 1 — Antibot avanzado** | B1–B7 | ✅ COMPLETE | Ampliación de detección antibot: vendors (B1), fingerprinting patterns (B2/B3/B7), PoW (B4), behavioral listeners (B5), journey probes (B6). 2 nuevas dimensiones. 9 total (era 7). |
+| **Phase 2 — E-commerce depth** | E1–E6 | PARTIAL (E1 ✅) | Price reliability scoring (E1) implementado. E2-E6 pendientes. |
+| **Phase 3 — Deep Mode / Playwright** | E7 + implementar `config.deep` | 🔲 | Desbloquea la recomendación `--deep flag` que ya aparece en output. Requiere Playwright. |
+| **Phase 4 — Test coverage** | T2 + smoke suite | 🔲 | Validation continua de señales por plataforma. |
 
 ---
 
@@ -56,12 +56,12 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 | A2 | ✅ | **Warning subestimación** — Alertar cuando el sitio es DYNAMIC/API_DRIVEN y el score antibot es bajo (protecciones runtime no visibles estáticamente). |
 | A3 | ❌ | **Gap 3 — Cart/checkout probe** — Descartado: requiere sesión activa (cookies + cart token) para retornar datos significativos. Sin sesión, el servidor devuelve carritos vacíos o redirects. |
 | B1 | ✅ | **Vendors comportamentales** — Detectar scripts y cookies de DataDome, HUMAN/PerimeterX, Akamai Bot Manager. Son los vendors más agresivos y no están en la detección WAF actual. |
-| B2 | 🔲 | **Hardware fingerprinting sin librería** — Buscar patrones directos en scripts inline: `toDataURL` (Canvas), `getChannelData` (AudioContext), `WEBGL_debug_renderer_info` (WebGL). Actualmente solo detectamos FingerprintJS. |
-| B3 | 🔲 | **Headless browser checks en JS del sitio** — Detectar si el sitio busca activamente `navigator.webdriver`, `window.outerWidth`, `chrome.app` en sus scripts. Indica detección activa de automatización. |
-| B4 | 🔲 | **Proof of Work (PoW)** — Detectar Turnstile widget y scripts de PoW custom en HTML. Observable estáticamente. Ampliar dimensión `captcha` o añadir señal en `waf`. |
-| B5 | 🔲 | **Behavioral script detection** — Detectar event listeners de recolección biométrica (`mousemove`, `keydown`, `scroll`, `touchstart`) en scripts inline y firmas de vendors comportamentales. |
-| B6 | 🔲 | **User journey probe** — Request directo a `/checkout` y `/cart` sin sesión y clasificar respuesta: challenge, redirect, 403, o abierto. Mismo patrón de probe que rate-limiting. |
-| B7 | 🔲 | **WebRTC detection scripts** — Buscar `RTCPeerConnection` y patrones de WebRTC leak detection en el JS del sitio. Indica que el sitio intentará exponer la IP real detrás de VPN/proxy. |
+| B2 | ✅ | **Hardware fingerprinting sin librería** — Detecta patrones Canvas.toDataURL, AudioContext.createDynamicsCompressor, WebGL.getParameter (0x846D, 0x9245). 23 unit tests + integration coverage. |
+| B3 | ✅ | **Headless browser checks en JS del sitio** — Detecta navigator.webdriver, navigator.plugins, window.chrome/chrome.runtime en scripts. Score ponderado por cantidad de patrones detectados. |
+| B4 | ✅ | **Proof of Work (PoW)** — Detecta Turnstile widget (challenges.cloudflare.com/turnstile) con score=3. Extendida CAPTCHA_SIGNALS; patrón prioritizado sobre reCAPTCHA v2. |
+| B5 | ✅ | **Behavioral script detection** — Detecta ≥2 event listeners (mousemove, keydown, wheel, scroll, touchstart) con validación isTrusted. Nueva dimensión: BehavioralDetectionDimension (score 0-3). |
+| B6 | ✅ | **User journey probe** — Probes /checkout, /cart sin sesión (max 2 requests). Condicional: solo si ecommerce_signals.is_ecommerce=true. Nueva dimensión: JourneyDimension (blocked_type: 403/challenge/redirect/rate_limit/none). |
+| B7 | ✅ | **WebRTC detection scripts** — Detecta RTCPeerConnection, getUserMedia, createDataChannel patterns en scripts. Score 3 (alta prioridad). |
 
 ---
 
