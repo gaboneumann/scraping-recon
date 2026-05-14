@@ -4,24 +4,24 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 ---
 
-## Estado del proyecto (May 2026)
+## Estado del proyecto (May 14, 2026)
 
 **Core: 100% implementado** — 7 módulos + utils + report + CLI operacional.  
-**Tests:** 180 tests (unit + integration + real URL) · 84.88% coverage · `make test`.  
+**Tests:** 266 tests (unit + integration + real URL) · 86.94% coverage · `make test` ✅.  
 **Gap crítico:** `--deep` acepta el flag pero no tiene implementación — cero código Playwright.
 
 | Componente | Estado | Líneas | Notas |
 |---|---|---|---|
-| `classifier` | ✅ completo | 521 | EcommerceSignals, PDP sample, platform-aware |
-| `antibot` | ✅ completo | 514 | WAF, rate-limit, TLS, fingerprinting, API probes, behavioral vendors (B1) |
+| `classifier` | ✅ completo | 623 | EcommerceSignals + price_reliability_score (E1), PDP sample, platform-aware |
+| `antibot` | ✅ completo | 538 | WAF, rate-limit, TLS, fingerprinting, API probes, behavioral vendors (B1) |
 | `recommender` | ✅ completo | 180 | Función pura, árbol de 5 ramas |
 | `legal` | ✅ completo | 219 | robots.txt, sitemap, ToS |
 | `auth_detector` | ✅ completo | 175 | login form, OAuth, paywall, cookie consent |
 | `api_detector` | ✅ completo | 171 | XHR/fetch, GraphQL probe, state blobs |
 | `pagination` | ✅ completo | 131 | link-rel, query param, cursor, infinite scroll |
-| `utils` (http, tls_test, graceful) | ✅ completo | 307 | |
+| `utils` (http, tls_test, graceful) | ✅ completo | ~100 | |
 | `report` (terminal + json_export) | ✅ completo | — | |
-| `--deep` / Playwright | ❌ no implementado | 0 | Flag aceptado, `config.deep` nunca se lee en `_run_scan` |
+| `--deep` / Playwright | ❌ no implementado | 0 | Flag aceptado en config, nunca se usa en main.py |
 
 ### Prioridad de fases
 
@@ -38,7 +38,7 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 | ID | Estado | Descripción |
 |----|--------|-------------|
-| E1 | 🔲 | **Price reliability score** — distinguir JSON-LD vs HTML visible vs placeholder client-side vs inexistente estáticamente. Actualmente solo se detecta si hay señales de precio, no si el valor es scrapeble sin JS. |
+| E1 | ✅ | **Price reliability score** — Implementado en classifier.py `_compute_price_score()`. Distingue JSON-LD vs HTML visible vs placeholder client-side. Score 0-100 refleja confianza de scrapeabilidad sin JS. |
 | E2 | 🔲 | **Search API probe** — detectar si el sitio expone un endpoint de búsqueda (Algolia, Elasticsearch, custom) utilizable como catálogo alternativo sin scraping de HTML. |
 | E3 | 🔲 | **Variantes de producto** — detectar si talla/color/SKU requieren requests AJAX adicionales y qué endpoint las sirve. Actualmente no se analiza. |
 | E4 | 🔲 | **Múltiples PDP samples** — tomar 2-3 muestras en vez de 1 para mayor confianza estadística sobre consistencia de protección entre productos. |
