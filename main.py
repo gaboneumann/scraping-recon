@@ -5,6 +5,7 @@ CLI entry point for scraping_recon. Built with Typer.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from datetime import datetime, timezone
 from typing import Optional
@@ -12,12 +13,14 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+logger = logging.getLogger(__name__)
+
 from config import Config
 from models.schemas import ModuleStatus, ReconReport
 from modules.antibot import analyze_antibot
 from modules.api_detector import detect_apis
 from modules.auth_detector import detect_auth
-from modules.classifier import classify_page
+from modules.classifier import classify_page, _detect_deep_ecommerce
 from modules.legal import analyze_legal
 from modules.pagination import detect_pagination
 from modules.recommender import build_recommendation
@@ -105,11 +108,33 @@ async def _run_scan(
 
     phase1_results = await asyncio.gather(*phase1_tasks)
 
-    # Extract api_detector endpoints to pass to antibot
+    # Extract classifier result and api_detector endpoints
+    classifier_result = None
     api_endpoints_for_probe = None
     for name, (result, status) in zip(phase1_names, phase1_results):
-        if name == "api_detector" and status.status == "OK" and result:
+        if name == "classifier" and status.status == "OK" and result:
+            classifier_result = result
+        elif name == "api_detector" and status.status == "OK" and result:
             api_endpoints_for_probe = result.endpoints
+
+    # Decision gate: E7 deep-mode detection (Phase 2)
+    # Only run on DYNAMIC/HYBRID e-commerce sites with --deep flag
+    if (
+        should_run("classifier")
+        and classifier_result
+        and classifier_result.type in ("DYNAMIC", "HYBRID")
+        and classifier_result.ecommerce
+        and classifier_result.ecommerce.is_ecommerce
+        and config.deep
+    ):
+        logger.debug("Phase 2: E7 deep-mode detection (conditional)")
+        try:
+            e7_result = await _detect_deep_ecommerce(url, timeout=config.timeout, config=config)
+            if e7_result:
+                classifier_result.ecommerce.e7_deep_mode = e7_result
+                logger.info(f"E7: Detected {e7_result.confidence} confidence, {len(e7_result.js_price_requests or [])} price requests")
+        except Exception as e:
+            logger.debug(f"E7 detection exception (graceful fallback): {e}")
 
     # Phase 2: antibot with endpoint context
     phase2_results = []

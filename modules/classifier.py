@@ -6,6 +6,7 @@ locales, mobile content parity, and crawl scope estimate.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -17,6 +18,7 @@ from bs4 import BeautifulSoup
 from models.schemas import (
     ClassifierResult,
     EcommerceSignals,
+    E7Result,
     PdpSampleResult,
     SecurityHeadersResult,
     StructuredDataResult,
@@ -951,3 +953,193 @@ def _classify(
     if content_ratio >= 0.08:
         return "STATIC", "MEDIUM"
     return "UNKNOWN", "LOW"
+
+
+async def _detect_deep_ecommerce(
+    url: str,
+    timeout: float = 10.0,
+    config: object | None = None,
+) -> E7Result | None:
+    """Detect E7 signals (JS price, infinite scroll, cart API) via Playwright XHR interception.
+
+    Conditionally launches Playwright browser to observe runtime XHR/fetch requests
+    across three observation windows: price JS, infinite scroll pagination, and cart probes.
+    Only runs when classifier type is DYNAMIC/HYBRID, is_ecommerce=True, and --deep flag set.
+
+    Args:
+        url: Target URL to observe.
+        timeout: Total timeout for browser observation in seconds (default 10).
+        config: Config object with deep flag and timeout settings.
+
+    Returns:
+        E7Result with captured XHR patterns and confidence scoring, or None if:
+        - config.deep not set (decision gate)
+        - Playwright import fails (unavailable)
+        - Browser initialization fails
+        - Timeout exceeded
+        - Any unhandled exception
+
+    Note:
+        Returns None gracefully on any error (non-blocking); logs warnings instead of raising.
+        No synthetic interactions (no clicks, no form submission); passive observation only.
+
+    Example:
+        if classifier.type in (DYNAMIC, HYBRID) and classifier.ecommerce.is_ecommerce:
+            e7_result = await _detect_deep_ecommerce(url, timeout=10.0, config=config)
+            if e7_result:
+                classifier.ecommerce.e7_deep_mode = e7_result
+    """
+    import time
+
+    # Decision gate: check preconditions before launching browser
+    if not config or not getattr(config, "deep", False):
+        return None
+
+    try:
+        from utils.playwright_helper import (
+            get_browser_context,
+            setup_xhr_interception,
+            scroll_page_to_bottom,
+            find_and_click_cart_button,
+        )
+
+        logger.debug("E7: Launching deep-mode Playwright detection")
+
+        start_time = time.monotonic()
+
+        async with get_browser_context(timeout=timeout) as (page, context):
+            # Navigate and wait for initial load
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=int(timeout * 1000))
+            except Exception as nav_err:
+                logger.warning(f"E7 page navigation failed: {nav_err.__class__.__name__}")
+                return None
+
+            # Wait for initial JS execution
+            await asyncio.sleep(0.5)
+
+            # ============ Window 1: Price JS Detection (3s passive observation) ============
+            price_patterns = {
+                "price": [
+                    "/api/price",
+                    "/api/products/",
+                    "/api/product/",
+                    "/graphql",
+                    "/data/products",
+                    "/data/price",
+                ]
+            }
+
+            price_intercepted = await setup_xhr_interception(page, price_patterns)
+            logger.debug("Window 1: Price JS interception setup")
+
+            # Passive observation: let JS run naturally for 3s
+            await asyncio.sleep(3.0)
+            js_price_requests = price_intercepted.get("price", [])
+            logger.debug(f"Window 1: Captured {len(js_price_requests)} price requests")
+
+            # ============ Window 2: Infinite Scroll Pagination Detection ============
+            pagination_patterns = {
+                "pagination": [
+                    "/api/products",
+                    "/api/category",
+                    "/api/search",
+                    "/api/listings",
+                    "/api/items",
+                ]
+            }
+
+            pagination_intercepted = await setup_xhr_interception(page, pagination_patterns)
+            logger.debug("Window 2: Pagination interception setup")
+
+            # Trigger infinite scroll
+            scroll_count = await scroll_page_to_bottom(page, max_scrolls=5)
+            pagination_requests = pagination_intercepted.get("pagination", [])
+            logger.debug(
+                f"Window 2: {scroll_count} scrolls, captured {len(pagination_requests)} pagination requests"
+            )
+
+            # Detect pagination pattern
+            infinite_scroll_pattern = None
+            if pagination_requests:
+                for req in pagination_requests:
+                    url_lower = req.get("url", "").lower()
+                    if "offset=" in url_lower:
+                        infinite_scroll_pattern = "offset"
+                        break
+                    elif "cursor=" in url_lower:
+                        infinite_scroll_pattern = "cursor"
+                        break
+                    elif "page=" in url_lower:
+                        infinite_scroll_pattern = "page"
+                        break
+
+            if not infinite_scroll_pattern and pagination_requests:
+                infinite_scroll_pattern = "unknown"
+
+            # Try to extract estimated product count from page
+            estimated_products = None
+            try:
+                # Common ways sites expose product count
+                meta_total = await page.evaluate(
+                    """() => {
+                    const meta = document.querySelector('[data-total-items]');
+                    if (meta) return parseInt(meta.getAttribute('data-total-items'), 10);
+                    if (window.totalProducts) return window.totalProducts;
+                    if (window.__INITIAL_STATE__?.products?.total) return window.__INITIAL_STATE__.products.total;
+                    return null;
+                    }"""
+                )
+                if meta_total and isinstance(meta_total, int) and meta_total > 0:
+                    estimated_products = meta_total
+            except Exception as e:
+                logger.debug(f"Product count extraction failed: {e.__class__.__name__}")
+
+            # ============ Window 3: Cart API Endpoint Probing ============
+            cart_patterns = {
+                "cart": ["/api/cart", "/cart/add", "/checkout/cart", "/api/checkout"]
+            }
+
+            cart_intercepted = await setup_xhr_interception(page, cart_patterns)
+            logger.debug("Window 3: Cart interception setup")
+
+            # Gentle cart button probe (hover, no click)
+            button_found = await find_and_click_cart_button(page, gentle=True)
+            logger.debug(f"Window 3: Cart button probe (gentle={True}), found={button_found}")
+
+            # Wait for any triggered API calls
+            await asyncio.sleep(2.0)
+            cart_requests = cart_intercepted.get("cart", [])
+            cart_endpoints = [req.get("url") for req in cart_requests] if cart_requests else None
+            logger.debug(f"Window 3: Captured {len(cart_requests)} cart endpoints")
+
+            # ============ Aggregate results and confidence scoring ============
+            execution_time_ms = int((time.monotonic() - start_time) * 1000)
+
+            # Score confidence based on signal density
+            signal_count = len(js_price_requests) + len(pagination_requests) + len(cart_requests)
+            if signal_count >= 3:
+                confidence = "high"
+            elif signal_count >= 1:
+                confidence = "medium"
+            else:
+                confidence = "low"
+
+            return E7Result(
+                js_price_requests=js_price_requests if js_price_requests else None,
+                infinite_scroll_pattern=infinite_scroll_pattern,
+                estimated_products=estimated_products,
+                cart_endpoints=cart_endpoints,
+                browser_execution_time_ms=execution_time_ms,
+                confidence=confidence,
+            )
+
+    except ImportError as e:
+        logger.warning(f"E7: Playwright not available ({e.__class__.__name__})")
+        return None
+    except asyncio.TimeoutError:
+        logger.warning("E7 observation timeout (10s exceeded)")
+        return None
+    except Exception as e:
+        logger.warning(f"E7 detection failed: {e.__class__.__name__}: {e}")
+        return None

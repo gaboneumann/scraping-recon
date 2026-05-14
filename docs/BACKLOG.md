@@ -4,25 +4,26 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 
 ---
 
-## Estado del proyecto (May 14, 2026 — PHASE 2 COMPLETE)
+## Estado del proyecto (May 14, 2026 — PHASE 3 COMPLETE)
 
 **Core: 100% implementado** — 7 módulos + utils + report + CLI operacional.  
-**Tests:** 236 tests (unit + integration) · 86%+ coverage · `make test` ✅.  
+**Tests:** 256 tests (unit + integration) · 86%+ coverage · `make test` ✅.  
 **Phase 2 COMPLETE:** E2-E6 e-commerce depth features fully implemented and tested.  
-**Gap crítico:** `--deep` acepta el flag pero no tiene implementación — cero código Playwright.
+**Phase 3 COMPLETE:** E7 deep mode Playwright XHR interception, 43 tasks, full test coverage.
 
 | Componente | Estado | Líneas | Notas |
 |---|---|---|---|
-| `classifier` | ✅ E1-E6 | 983 | EcommerceSignals (E1-E6), variants (E3), reviews (E5), inventory (E6), multi-PDP (E4) |
+| `classifier` | ✅ E1-E7 | 1133 | EcommerceSignals (E1-E6), E7 deep mode (Playwright), variants (E3), reviews (E5), inventory (E6), multi-PDP (E4) |
 | `antibot` | ✅ completo | 652 | WAF, rate-limit, TLS, fingerprinting (B2/B3/B7), PoW (B4), behavioral listeners (B5), journey probes (B6), behavioral vendors (B1) |
 | `recommender` | ✅ completo | 180 | Función pura, árbol de 5 ramas |
 | `legal` | ✅ completo | 219 | robots.txt, sitemap, ToS |
 | `auth_detector` | ✅ completo | 175 | login form, OAuth, paywall, cookie consent |
 | `api_detector` | ✅ E2 added | 261 | XHR/fetch, GraphQL probe, state blobs, search API (E2) |
 | `pagination` | ✅ completo | 131 | link-rel, query param, cursor, infinite scroll |
+| `utils/playwright_helper` | ✅ E7 | ~250 | Browser context manager, XHR interception, scroll helper, cart button detection |
 | `utils` (http, tls_test, graceful) | ✅ completo | ~100 | |
 | `report` (terminal + json_export) | ✅ completo | — | |
-| `--deep` / Playwright | ❌ no implementado | 0 | Flag aceptado en config, nunca se usa en main.py |
+| `--deep` / Playwright | ✅ COMPLETE | 1133+250 | Phase 3: _detect_deep_ecommerce(), 3 observation windows, XHR pattern matching, E7Result schema |
 
 ### Prioridad de fases
 
@@ -30,7 +31,7 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 |---|---|---|---|
 | **Phase 1 — Antibot avanzado** | B1–B7 | ✅ COMPLETE | Ampliación de detección antibot: vendors (B1), fingerprinting patterns (B2/B3/B7), PoW (B4), behavioral listeners (B5), journey probes (B6). 2 nuevas dimensiones. 9 total (era 7). |
 | **Phase 2 — E-commerce depth** | E1–E6 | ✅ COMPLETE | Price reliability scoring (E1) + Search API (E2) + Variants (E3) + Multi-PDP (E4) + Reviews provider (E5) + Inventory mechanism (E6). Fully implemented with 48 unit tests. |
-| **Phase 3 — Deep Mode / Playwright** | E7 + implementar `config.deep` | 🔲 | Desbloquea la recomendación `--deep flag` que ya aparece en output. Requiere Playwright. |
+| **Phase 3 — Deep Mode / Playwright** | E7 | ✅ COMPLETE | XHR interception (price JS, infinite scroll, cart API), 3 observation windows, E7Result schema, 43 tasks, 28 new tests (20 unit + 8 integration), 256 total tests. Graceful error handling: returns None if Playwright unavailable. |
 | **Phase 4 — Test coverage** | T2 + smoke suite | 🔲 | Validation continua de señales por plataforma. |
 
 ---
@@ -45,7 +46,7 @@ Checklist de mejoras pendientes. Actualizar estado al implementar cada item.
 | E4 | ✅ | **Múltiples PDP samples** — Extrae 2-3 muestras de productos con consistency metrics (matching WAF headers %, render mode agreement). Implementado en classifier.py `_fetch_pdp_samples()`. 6 link extraction + sampling tests. |
 | E5 | ✅ | **Reviews API externa** — Detecta providers (Bazaarvoice, Yotpo, Trustpilot, eKomi, Google, nativa) via script tags. Implementado en classifier.py `_detect_reviews_provider()`. 8 unit tests. |
 | E6 | ✅ | **Inventario estático vs dinámico** — Distingue SERVER_SIDE vs AJAX via data attributes, hardcoded text, setInterval/fetch patterns. Implementado en classifier.py `_detect_inventory_mechanism()`. 10 unit tests. |
-| E7 | 🔲 | **Deep mode e-commerce** — lógica Playwright específica: observar requests JS de precio, paginado real en infinite scroll, y requests del carrito. Actualmente `--deep` no tiene lógica e-commerce específica. |
+| E7 | ✅ | **Deep mode e-commerce** — Observación de requests JS de precio, paginado real en infinite scroll, requests del carrito via Playwright XHR interception. `_detect_deep_ecommerce()` en classifier.py, helpers en utils/playwright_helper.py. Decisión gate: solo si DYNAMIC/HYBRID + is_ecommerce + --deep. 3 observation windows, 20 unit tests, 8 integration tests. |
 
 ---
 

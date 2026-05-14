@@ -5,7 +5,7 @@ Import from here — never define inline schemas in modules.
 """
 from __future__ import annotations
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RobotsTxtResult(BaseModel):
@@ -77,6 +77,9 @@ class EcommerceSignals(BaseModel):
     # E6: Inventory
     inventory: InventoryInfo | None = None
 
+    # E7: Deep mode runtime detection (optional, None if --deep not specified or browser unavailable)
+    e7_deep_mode: E7Result | None = None
+
 
 class SearchApiResult(BaseModel):
     """E2: Search API detection result."""
@@ -120,6 +123,23 @@ class ReviewsProviderInfo(BaseModel):
     api_endpoint: str | None = None
     widget_script_found: bool = False
     confidence: Literal["high", "medium", "low"] = "low"
+
+
+class E7Result(BaseModel):
+    """E7: Deep mode runtime detection via Playwright XHR interception.
+
+    Captures JavaScript price mutations, infinite scroll pagination patterns,
+    and cart API endpoints observed during runtime (no synthetic interaction).
+    """
+
+    model_config = ConfigDict(extra="allow")  # Future extensibility for additional E7 signals
+
+    js_price_requests: list[dict] | None = None
+    infinite_scroll_pattern: Literal["offset", "cursor", "page", "unknown"] | None = None
+    estimated_products: int | None = None
+    cart_endpoints: list[str] | None = None
+    browser_execution_time_ms: int
+    confidence: Literal["high", "medium", "low"]
 
 
 class PdpSampleResult(BaseModel):
