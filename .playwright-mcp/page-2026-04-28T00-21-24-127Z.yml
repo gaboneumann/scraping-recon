@@ -1,0 +1,276 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - link "Made with love by Vercel" [ref=e5] [cursor=pointer]:
+          - /url: https://vercel.com
+          - img [ref=e6]
+        - img [ref=e9]
+        - link "Skills" [ref=e11] [cursor=pointer]:
+          - /url: /
+      - navigation [ref=e12]:
+        - link "Official" [ref=e13] [cursor=pointer]:
+          - /url: /official
+        - link "Audits" [ref=e14] [cursor=pointer]:
+          - /url: /audits
+        - link "Docs" [ref=e15] [cursor=pointer]:
+          - /url: /docs
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - link "skills" [ref=e19] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e20]: /
+      - link "apify" [ref=e21] [cursor=pointer]:
+        - /url: /apify
+      - generic [ref=e22]: /
+      - link "agent-skills" [ref=e23] [cursor=pointer]:
+        - /url: /apify/agent-skills
+      - generic [ref=e24]: /
+      - generic [ref=e25]: apify-ultimate-scraper
+    - heading "apify-ultimate-scraper" [level=1] [ref=e26]
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - generic [ref=e30]: Installation
+          - button "$ npx skills add https://github.com/apify/agent-skills --skill apify-ultimate-scraper" [ref=e31] [cursor=pointer]:
+            - code [ref=e32]: $ npx skills add https://github.com/apify/agent-skills --skill apify-ultimate-scraper
+            - img [ref=e33]
+        - generic [ref=e35]: Summary
+        - generic [ref=e38]:
+          - paragraph [ref=e39]:
+            - strong [ref=e40]: Automated web scraper selecting optimal Actors for 55+ platforms including Instagram, TikTok, YouTube, Facebook, Google Maps, and more.
+          - list [ref=e41]:
+            - listitem [ref=e42]: Covers 55+ pre-configured Actors across 8 major platforms with use-case-specific selection guidance (lead generation, influencer discovery, brand monitoring, competitor analysis, trend research)
+            - listitem [ref=e43]: "Supports three output formats: quick chat display, CSV export, or JSON export with customizable result limits"
+            - listitem [ref=e44]: Includes multi-Actor workflow patterns for complex tasks like lead enrichment, influencer vetting, and competitor deep-dives
+            - listitem [ref=e45]: Dynamically fetches Actor schemas and input parameters via mcpc CLI, then executes runs with automatic error handling and follow-up suggestions
+        - generic [ref=e46]:
+          - generic [ref=e48]: SKILL.md
+          - generic [ref=e49]:
+            - heading "Universal web scraper" [level=1] [ref=e50]
+            - paragraph [ref=e51]: AI-driven data extraction from ~100 Actors across 15+ platforms via the Apify CLI.
+            - paragraph [ref=e52]:
+              - strong [ref=e53]:
+                - text: "Rule: Always pass"
+                - code [ref=e54]: "--json"
+                - text: and redirect stderr with
+                - code [ref=e55]: 2>/dev/null
+                - text: to CLI commands.
+              - text: JSON output is stable across CLI versions. stderr contains progress messages that break JSON parsers if not redirected.
+            - heading "Prerequisites" [level=2] [ref=e56]
+            - list [ref=e57]:
+              - listitem [ref=e58]:
+                - text: Apify CLI v1.4.0+ (
+                - code [ref=e59]: npm install -g apify-cli
+                - text: )
+              - listitem [ref=e60]: Authenticated session (see below)
+            - heading "Authentication" [level=2] [ref=e61]
+            - paragraph [ref=e62]: "If a CLI command fails with an auth error, authenticate using one of these methods:"
+            - list [ref=e63]:
+              - listitem [ref=e64]:
+                - strong [ref=e65]: "OAuth (interactive):"
+                - code [ref=e66]: apify login
+                - text: (opens browser)
+              - listitem [ref=e67]:
+                - strong [ref=e68]: "Environment variable:"
+                - code [ref=e69]: export APIFY_TOKEN=your_token_here
+              - listitem [ref=e70]:
+                - strong [ref=e71]: "From .env file:"
+                - code [ref=e72]: source .env
+                - text: (if the file contains
+                - code [ref=e73]: APIFY_TOKEN=...
+                - text: )
+            - paragraph [ref=e74]:
+              - text: "Generate token:"
+              - link "https://console.apify.com/settings/integrations" [ref=e75] [cursor=pointer]:
+                - /url: https://console.apify.com/settings/integrations
+            - heading "Workflow" [level=2] [ref=e76]
+            - 'heading "Step 1: Understand goal and select Actor" [level=3] [ref=e77]'
+            - paragraph [ref=e78]:
+              - text: Identify the target platform and use case. Read
+              - code [ref=e79]: references/actor-index.md
+              - text: to find the right Actor.
+            - paragraph [ref=e80]: "If the task involves a multi-step pipeline, also read the matching workflow guide:"
+            - table [ref=e81]:
+              - rowgroup [ref=e82]:
+                - row "Task involves... Read" [ref=e83]:
+                  - columnheader "Task involves..." [ref=e84]
+                  - columnheader "Read" [ref=e85]
+              - rowgroup [ref=e86]:
+                - row "leads, contacts, emails, B2B references/workflows/lead-generation.md" [ref=e87]:
+                  - cell "leads, contacts, emails, B2B" [ref=e88]
+                  - cell "references/workflows/lead-generation.md" [ref=e89]:
+                    - code [ref=e90]: references/workflows/lead-generation.md
+                - row "competitor, ads, pricing references/workflows/competitive-intel.md" [ref=e91]:
+                  - cell "competitor, ads, pricing" [ref=e92]
+                  - cell "references/workflows/competitive-intel.md" [ref=e93]:
+                    - code [ref=e94]: references/workflows/competitive-intel.md
+                - row "influencer, creator references/workflows/influencer-vetting.md" [ref=e95]:
+                  - cell "influencer, creator" [ref=e96]
+                  - cell "references/workflows/influencer-vetting.md" [ref=e97]:
+                    - code [ref=e98]: references/workflows/influencer-vetting.md
+                - row "brand, mentions, sentiment references/workflows/brand-monitoring.md" [ref=e99]:
+                  - cell "brand, mentions, sentiment" [ref=e100]
+                  - cell "references/workflows/brand-monitoring.md" [ref=e101]:
+                    - code [ref=e102]: references/workflows/brand-monitoring.md
+                - row "reviews, ratings, reputation references/workflows/review-analysis.md" [ref=e103]:
+                  - cell "reviews, ratings, reputation" [ref=e104]
+                  - cell "references/workflows/review-analysis.md" [ref=e105]:
+                    - code [ref=e106]: references/workflows/review-analysis.md
+                - row "SEO, SERP, crawl, content, RAG references/workflows/content-and-seo.md" [ref=e107]:
+                  - cell "SEO, SERP, crawl, content, RAG" [ref=e108]
+                  - cell "references/workflows/content-and-seo.md" [ref=e109]:
+                    - code [ref=e110]: references/workflows/content-and-seo.md
+                - row "analytics, engagement, performance references/workflows/social-media-analytics.md" [ref=e111]:
+                  - cell "analytics, engagement, performance" [ref=e112]
+                  - cell "references/workflows/social-media-analytics.md" [ref=e113]:
+                    - code [ref=e114]: references/workflows/social-media-analytics.md
+                - row "trends, keywords, hashtags references/workflows/trend-research.md" [ref=e115]:
+                  - cell "trends, keywords, hashtags" [ref=e116]
+                  - cell "references/workflows/trend-research.md" [ref=e117]:
+                    - code [ref=e118]: references/workflows/trend-research.md
+                - row "jobs, recruiting, candidates references/workflows/job-market-and-recruitment.md" [ref=e119]:
+                  - cell "jobs, recruiting, candidates" [ref=e120]
+                  - cell "references/workflows/job-market-and-recruitment.md" [ref=e121]:
+                    - code [ref=e122]: references/workflows/job-market-and-recruitment.md
+                - row "real estate, listings, hotels references/workflows/real-estate-and-hospitality.md" [ref=e123]:
+                  - cell "real estate, listings, hotels" [ref=e124]
+                  - cell "references/workflows/real-estate-and-hospitality.md" [ref=e125]:
+                    - code [ref=e126]: references/workflows/real-estate-and-hospitality.md
+                - row "price monitoring, e-commerce, products references/workflows/ecommerce-price-monitoring.md" [ref=e127]:
+                  - cell "price monitoring, e-commerce, products" [ref=e128]
+                  - cell "references/workflows/ecommerce-price-monitoring.md" [ref=e129]:
+                    - code [ref=e130]: references/workflows/ecommerce-price-monitoring.md
+                - row "contact enrichment, email extraction references/workflows/contact-enrichment.md" [ref=e131]:
+                  - cell "contact enrichment, email extraction" [ref=e132]
+                  - cell "references/workflows/contact-enrichment.md" [ref=e133]:
+                    - code [ref=e134]: references/workflows/contact-enrichment.md
+                - row "knowledge base, RAG, LLM data feed references/workflows/knowledge-base-and-rag.md" [ref=e135]:
+                  - cell "knowledge base, RAG, LLM data feed" [ref=e136]
+                  - cell "references/workflows/knowledge-base-and-rag.md" [ref=e137]:
+                    - code [ref=e138]: references/workflows/knowledge-base-and-rag.md
+                - row "company research, due diligence references/workflows/company-research.md" [ref=e139]:
+                  - cell "company research, due diligence" [ref=e140]
+                  - cell "references/workflows/company-research.md" [ref=e141]:
+                    - code [ref=e142]: references/workflows/company-research.md
+            - paragraph [ref=e143]: "If no Actor matches in the index, search dynamically:"
+            - code [ref=e145]: apify actors search "KEYWORDS" --json --limit 10 2>/dev/null
+            - paragraph [ref=e146]:
+              - text: "From results:"
+              - code [ref=e147]: items[].username
+              - text: /
+              - code [ref=e148]: items[].name
+              - text: (Actor ID),
+              - code [ref=e149]: items[].title
+              - text: ","
+              - code [ref=e150]: items[].stats.totalUsers30Days
+              - text: ","
+              - code [ref=e151]: items[].currentPricingInfo.pricingModel
+              - text: .
+            - 'heading "Step 2: Fetch Actor schema and check gotchas" [level=3] [ref=e152]'
+            - paragraph [ref=e153]: "Fetch the input schema dynamically:"
+            - code [ref=e155]: apify actors info "ACTOR_ID" --input --json 2>/dev/null
+            - paragraph [ref=e156]:
+              - text: Also read
+              - code [ref=e157]: references/gotchas.md
+              - text: to check for common pitfalls for the selected Actor.
+            - paragraph [ref=e158]:
+              - text: "For Actor documentation:"
+              - code [ref=e159]: apify actors info "ACTOR_ID" --readme
+            - 'heading "Step 3: Configure and run" [level=3] [ref=e160]'
+            - paragraph [ref=e161]:
+              - strong [ref=e162]: Skip user preferences
+              - text: for simple lookups (e.g., "Nike's follower count"). Go straight to running with quick answer mode.
+            - paragraph [ref=e163]: For larger tasks, confirm output format (quick answer / CSV / JSON) and result count.
+            - paragraph [ref=e164]:
+              - strong [ref=e165]: "Standard run (blocking):"
+            - code [ref=e167]: apify actors call "ACTOR_ID" -i 'JSON_INPUT' --json 2>/dev/null
+            - paragraph [ref=e168]:
+              - text: "From output:"
+              - code [ref=e169]: .id
+              - text: (run ID),
+              - code [ref=e170]: .status
+              - text: ","
+              - code [ref=e171]: .defaultDatasetId
+              - text: ","
+              - code [ref=e172]: .stats.durationMillis
+            - paragraph [ref=e173]:
+              - strong [ref=e174]: "Fetch results:"
+            - code [ref=e176]: apify datasets get-items DATASET_ID --format json
+            - paragraph [ref=e177]:
+              - text: "For CSV:"
+              - code [ref=e178]: apify datasets get-items DATASET_ID --format csv
+            - paragraph [ref=e179]:
+              - strong [ref=e180]: "Quick answer mode:"
+              - text: Fetch results as JSON, pick top 5, present formatted in chat.
+            - paragraph [ref=e181]:
+              - strong [ref=e182]: "Save to file:"
+              - text: Fetch results, use Write tool to save as
+              - code [ref=e183]: YYYY-MM-DD_descriptive-name.csv
+              - text: or
+              - code [ref=e184]: .json
+              - text: .
+            - paragraph [ref=e185]:
+              - strong [ref=e186]: "Large/long-running scrapes:"
+            - code [ref=e188]: apify actors start "ACTOR_ID" -i 'JSON_INPUT' --json 2>/dev/null
+            - paragraph [ref=e189]:
+              - text: "Poll:"
+              - code [ref=e190]: apify runs info RUN_ID --json 2>/dev/null
+              - text: (check
+              - code [ref=e191]: .status
+              - text: for
+              - code [ref=e192]: SUCCEEDED
+              - text: ).
+            - 'heading "Step 4: Deliver results" [level=3] [ref=e193]'
+            - paragraph [ref=e194]: "Report: result count, file location (if saved), key data fields, and links:"
+            - list [ref=e195]:
+              - listitem [ref=e196]:
+                - text: "Dataset:"
+                - code [ref=e197]: https://console.apify.com/storage/datasets/DATASET_ID
+              - listitem [ref=e198]:
+                - text: "Run:"
+                - code [ref=e199]: https://console.apify.com/actors/runs/RUN_ID
+            - paragraph [ref=e200]: "For multi-step workflows: suggest the next pipeline step from the workflow guide."
+            - heading "Troubleshooting" [level=2] [ref=e201]
+            - paragraph [ref=e202]:
+              - text: Common errors and pitfalls are documented in
+              - code [ref=e203]: references/gotchas.md
+              - text: . Read it before running PPE (pay-per-event) Actors.
+      - generic [ref=e204]:
+        - generic [ref=e205]:
+          - generic [ref=e206]: Weekly Installs
+          - generic [ref=e207]: 7.9K
+        - generic [ref=e208]:
+          - generic [ref=e209]:
+            - generic [ref=e210]: Repository
+            - generic "Verified organization on GitHub" [ref=e211]:
+              - img "Verified organization on GitHub" [ref=e212]
+          - link "apify/agent-skills" [ref=e214] [cursor=pointer]:
+            - /url: https://github.com/apify/agent-skills
+        - generic [ref=e215]:
+          - generic [ref=e216]: GitHub Stars
+          - generic [ref=e217]:
+            - img [ref=e218]
+            - generic [ref=e221]: 2.0K
+        - generic [ref=e222]:
+          - generic [ref=e223]: First Seen
+          - generic [ref=e224]: Today
+        - generic [ref=e225]:
+          - generic [ref=e226]: Security Audits
+          - generic [ref=e227]:
+            - link "Gen Agent Trust Hub Pass" [ref=e228] [cursor=pointer]:
+              - /url: /apify/agent-skills/apify-ultimate-scraper/security/agent-trust-hub
+              - generic [ref=e229]:
+                - generic [ref=e230]: Gen Agent Trust Hub
+                - generic [ref=e231]: Pass
+            - link "Socket Warn" [ref=e232] [cursor=pointer]:
+              - /url: /apify/agent-skills/apify-ultimate-scraper/security/socket
+              - generic [ref=e233]:
+                - generic [ref=e234]: Socket
+                - generic [ref=e235]: Warn
+            - link "Snyk Warn" [ref=e236] [cursor=pointer]:
+              - /url: /apify/agent-skills/apify-ultimate-scraper/security/snyk
+              - generic [ref=e237]:
+                - generic [ref=e238]: Snyk
+                - generic [ref=e239]: Warn
+  - alert [ref=e240]

@@ -14,11 +14,13 @@ from models.schemas import (
     AntibotResult,
     ApiDetectorResult,
     AuthResult,
+    BehavioralDetectionDimension,
     CaptchaDimension,
     ClassifierResult,
     FingerprintDimension,
     HoneypotDimension,
     IpRepDimension,
+    JourneyDimension,
     PaginationResult,
     RateLimitDimension,
     SecurityHeadersResult,
@@ -66,6 +68,12 @@ def _antibot(
                 score=2 if geo_block else 0,
                 geo_block=geo_block,
                 proxy_recommendation="Residential proxy required" if geo_block else "Datacenter proxy sufficient",
+            ),
+            behavioral_detection=BehavioralDetectionDimension(
+                score=0, listener_count=0, listener_types=[], confidence="low"
+            ),
+            journey_probes=JourneyDimension(
+                score=0, blocked_at_url=None, blocked_type="none", probes_sent=0
             ),
         ),
     )

@@ -1,8 +1,9 @@
 """
 modules/antibot.py
-Analyzes anti-bot protections across 7 dimensions:
-WAF, TLS fingerprint, rate limiting, captcha, browser fingerprinting,
-honeypots, and IP reputation. Produces a score from 0-10.
+Analyzes anti-bot protections across 9 dimensions:
+WAF, TLS fingerprint, rate limiting, captcha, browser fingerprinting (B2/B3/B7),
+honeypots, IP reputation, behavioral event listeners (B5), and commerce journey probes (B6).
+Produces a score from 0-10.
 """
 from __future__ import annotations
 
@@ -22,11 +23,13 @@ from models.schemas import (
     AntibotResult,
     ApiEndpoint,
     ApiEndpointProbeResult,
+    BehavioralDetectionDimension,
     BehavioralVendor,
     CaptchaDimension,
     FingerprintDimension,
     HoneypotDimension,
     IpRepDimension,
+    JourneyDimension,
     RateLimitDimension,
     WafDimension,
 )
@@ -46,18 +49,23 @@ WAF_HEADER_SIGNALS: dict[str, tuple[int, list[str]]] = {
 }
 
 CAPTCHA_SIGNALS: dict[str, tuple[int, list[str]]] = {
-    "reCAPTCHA v2": (2, ["data-sitekey"]),
+    "Turnstile":    (3, ["challenges.cloudflare.com/turnstile", "turnstile.js"]),
+    "Turnstile PoW":(3, ["challenges.cloudflare.com/turnstile", "turboshake.js"]),
     "reCAPTCHA v3": (3, ["render="]),
-    "hCaptcha":     (2, ["hcaptcha.com"]),
-    "Turnstile":    (3, ["challenges.cloudflare.com/turnstile"]),
     "FunCaptcha":   (3, ["funcaptcha.com"]),
+    "reCAPTCHA v2": (2, ["data-sitekey"]),
+    "hCaptcha":     (2, ["hcaptcha.com"]),
 }
 
 FINGERPRINT_SIGNALS: dict[str, tuple[int, list[str]]] = {
     "FingerprintJS":   (2, ["fpjs.io", "fingerprint.com"]),
     "Canvas FP":       (2, ["toDataURL", "getImageData"]),
-    "AudioContext FP": (2, ["AudioContext", "AnalyserNode"]),
+    "AudioContext FP": (2, ["AudioContext", "AnalyserNode", "createDynamicsCompressor"]),
+    "WebGL FP":        (2, ["getParameter", "WEBGL_debug_renderer_info"]),
     "Webdriver check": (3, ["navigator.webdriver"]),
+    "Plugins check":   (2, ["navigator.plugins", "navigator.mimeTypes"]),
+    "Chrome check":    (2, ["window.chrome", "chrome.runtime"]),
+    "WebRTC leak":     (3, ["RTCPeerConnection", "getUserMedia", "createDataChannel"]),
 }
 
 HONEYPOT_SELECTORS = [
@@ -90,15 +98,24 @@ BEHAVIORAL_VENDOR_PATTERNS: dict[str, dict[str, str]] = {
     },
 }
 
+BEHAVIORAL_LISTENER_PATTERNS: dict[str, str] = {
+    "mousemove": r"addEventListener\s*\(\s*['\"]mousemove['\"]\s*,\s*|on\s*mousemove\s*=",
+    "keydown": r"addEventListener\s*\(\s*['\"]keydown['\"]\s*,\s*|on\s*keydown\s*=",
+    "wheel": r"addEventListener\s*\(\s*['\"]wheel['\"]\s*,\s*|on\s*wheel\s*=",
+    "scroll": r"addEventListener\s*\(\s*['\"]scroll['\"]\s*,\s*|on\s*scroll\s*=",
+    "touchstart": r"addEventListener\s*\(\s*['\"]touchstart['\"]\s*,\s*|on\s*touchstart\s*=",
+}
+
 
 async def analyze_antibot(
     url: str,
     timeout: float = 30.0,
     api_endpoints: list[ApiEndpoint] | None = None,
+    ecommerce_signals: dict | None = None,
 ) -> AntibotResult:
     """
-    Run all 7 anti-bot detection dimensions and return an AntibotResult.
-    Maximum 12 requests base: 1 base + 8 rate-limit + 3 TLS.
+    Run all 9 anti-bot detection dimensions and return an AntibotResult.
+    Maximum 12-15 requests base: 1 base + 8 rate-limit + 3 TLS + up to 2 journey probes.
     If api_endpoints provided, probes up to 2 REST/GraphQL endpoints (6 requests each).
     """
     # Base fetch for HTML-based dimensions
@@ -118,6 +135,8 @@ async def analyze_antibot(
     honeypot_dim = _detect_honeypots(soup)
     ip_rep_dim = _assess_ip_reputation(h)
     behavioral_vendors = _detect_behavioral_vendors(html, h, soup)
+    behavioral_detection_dim = _detect_behavioral_events(html, soup)
+    journey_dim = await _detect_journey_probes(url, ecommerce_signals, timeout=15.0)
 
     score = sum([
         waf_dim.score,
@@ -127,9 +146,11 @@ async def analyze_antibot(
         fingerprint_dim.score,
         honeypot_dim.score,
         ip_rep_dim.score,
+        behavioral_detection_dim.score,
+        journey_dim.score,
     ])
 
-    overall_score = round((score / 21) * 10, 2)
+    overall_score = round((score / 27) * 10, 2)
 
     level = (
         "NONE"    if overall_score == 0  else
@@ -162,6 +183,8 @@ async def analyze_antibot(
             browser_fingerprinting=fingerprint_dim,
             honeypots=honeypot_dim,
             ip_reputation=ip_rep_dim,
+            behavioral_detection=behavioral_detection_dim,
+            journey_probes=journey_dim,
         ),
         api_endpoint_probes=endpoint_probes,
         behavioral_vendors=behavioral_vendors,
@@ -434,6 +457,35 @@ def _detect_fingerprinting(html: str) -> FingerprintDimension:
     return FingerprintDimension(score=max_score, libraries=libraries)
 
 
+def _detect_behavioral_events(html: str, soup: BeautifulSoup) -> BehavioralDetectionDimension:
+    """Detect behavioral event listeners for collection (B5)."""
+    scripts = _extract_scripts(html, soup)
+    listener_types: list[str] = []
+    listener_count = 0
+
+    for listener, pattern in BEHAVIORAL_LISTENER_PATTERNS.items():
+        found = False
+        for script in scripts:
+            if re.search(pattern, script, re.IGNORECASE):
+                if "isTrusted" in script or listener not in listener_types:
+                    found = True
+                    break
+
+        if found:
+            listener_types.append(listener)
+            listener_count += 1
+
+    confidence = "high" if listener_count >= 3 else "medium" if listener_count == 2 else "low"
+    score = 0 if listener_count < 2 else (1 if listener_count == 2 else (2 if listener_count < 4 else 3))
+
+    return BehavioralDetectionDimension(
+        score=score,
+        listener_count=listener_count,
+        listener_types=listener_types,
+        confidence=confidence,
+    )
+
+
 def _detect_honeypots(soup: BeautifulSoup) -> HoneypotDimension:
     """Detect hidden honeypot links."""
     locations: list[str] = []
@@ -455,6 +507,68 @@ def _detect_honeypots(soup: BeautifulSoup) -> HoneypotDimension:
         score=score,
         count=count,
         locations=locations[:10],
+    )
+
+
+async def _detect_journey_probes(
+    url: str,
+    ecommerce_signals: dict | None = None,
+    timeout: float = 15.0,
+) -> JourneyDimension:
+    """
+    Detect commerce journey protection (B6).
+    Probes /checkout and /cart without session; max 2 requests.
+    Only probes if ecommerce_signals indicates e-commerce site.
+    """
+    if not ecommerce_signals or not ecommerce_signals.get("is_ecommerce"):
+        return JourneyDimension(
+            score=0,
+            blocked_at_url=None,
+            blocked_type="none",
+            probes_sent=0,
+        )
+
+    base_url = url.rstrip("/")
+    journey_paths = ["/checkout", "/cart"]
+    blocked_at = None
+    blocked_type = "none"
+    probes_sent = 0
+
+    for path in journey_paths[:2]:
+        if probes_sent >= 2:
+            break
+
+        probe_url = f"{base_url}{path}"
+        try:
+            status, headers, html, _ = await make_request(probe_url, timeout=timeout)
+            probes_sent += 1
+
+            if status == 403:
+                blocked_at = probe_url
+                blocked_type = "403"
+                break
+            elif status in (401, 407):
+                blocked_at = probe_url
+                blocked_type = "challenge"
+                break
+            elif status in (301, 302, 303, 307, 308):
+                blocked_at = probe_url
+                blocked_type = "redirect"
+                break
+            elif status >= 429:
+                blocked_at = probe_url
+                blocked_type = "rate_limit"
+                break
+        except Exception as e:
+            logger.debug("Journey probe failed for %s: %s", path, e)
+
+    score = 0 if blocked_type == "none" else (1 if probes_sent == 1 else 2 if blocked_type == "redirect" else 3)
+
+    return JourneyDimension(
+        score=score,
+        blocked_at_url=blocked_at,
+        blocked_type=blocked_type,
+        probes_sent=probes_sent,
     )
 
 

@@ -162,6 +162,24 @@ class FingerprintDimension(BaseModel):
     libraries: list[str]
 
 
+class BehavioralDetectionDimension(BaseModel):
+    """B5: Behavioral event listener detection."""
+
+    score: int = Field(ge=0, le=3)
+    listener_count: int
+    listener_types: list[str]
+    confidence: str
+
+
+class JourneyDimension(BaseModel):
+    """B6: Commerce journey probe results."""
+
+    score: int = Field(ge=0, le=3)
+    blocked_at_url: str | None
+    blocked_type: Literal["403", "challenge", "redirect", "rate_limit", "none"]
+    probes_sent: int
+
+
 class HoneypotDimension(BaseModel):
     score: int = Field(ge=0, le=3)
     count: int
@@ -182,6 +200,8 @@ class AntibotDimensions(BaseModel):
     browser_fingerprinting: FingerprintDimension
     honeypots: HoneypotDimension
     ip_reputation: IpRepDimension
+    behavioral_detection: BehavioralDetectionDimension
+    journey_probes: JourneyDimension
 
 
 class ApiEndpointProbeResult(BaseModel):

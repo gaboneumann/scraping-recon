@@ -9,11 +9,13 @@ from models.schemas import (
     AntibotDimensions,
     AntibotResult,
     ApiDetectorResult,
+    BehavioralDetectionDimension,
     ClassifierResult,
     EcommerceSignals,
     FingerprintDimension,
     HoneypotDimension,
     IpRepDimension,
+    JourneyDimension,
     CaptchaDimension,
     RateLimitDimension,
     SecurityHeadersResult,
@@ -72,6 +74,12 @@ def _make_antibot(
                 score=2 if geo_block else 0,
                 geo_block=geo_block,
                 proxy_recommendation="Residential proxy required" if geo_block else "Datacenter proxy sufficient",
+            ),
+            behavioral_detection=BehavioralDetectionDimension(
+                score=0, listener_count=0, listener_types=[], confidence="low"
+            ),
+            journey_probes=JourneyDimension(
+                score=0, blocked_at_url=None, blocked_type="none", probes_sent=0
             ),
         ),
     )
@@ -223,6 +231,12 @@ def test_sr07_flag_truncation(make_report) -> None:
             ip_reputation=IpRepDimension(
                 score=2, geo_block=True,
                 proxy_recommendation="Residential proxy required",
+            ),
+            behavioral_detection=BehavioralDetectionDimension(
+                score=0, listener_count=0, listener_types=[], confidence="low"
+            ),
+            journey_probes=JourneyDimension(
+                score=0, blocked_at_url=None, blocked_type="none", probes_sent=0
             ),
         ),
     )
