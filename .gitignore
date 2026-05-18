@@ -1,13 +1,80 @@
+# Python environment
 venv/
+env/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+*.so
+.pytest_cache/
+
+# IDE & editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & secrets
 .env
+.env.local
+.env.*.local
+credentials/
+secrets/
+*.pem
+*.key
+*.crt
+
+# Claude Code & development tools
+.claude/settings.local.json
+.claude/commands/
+.atl/
+.claude/worktrees/
+
+# Testing & coverage
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Temporary files & logs
+*.tmp
+*.log
+logs/
+.tmp/
+temp/
+/tmp/
+
+# Project outputs
+output/
+outputs/
+storage/
+report_*.json
 *.json.tmp
 /tmp/wafw00f.json
-report_*.json
+
+# Playwright browsers (downloaded on demand) & logs
+.playwright/
+.playwright-mcp/
+browsers/
+
+# OS
 .DS_Store
-.claude/settings.local.json
-.atl/
-.coverage
-htmlcov/
+Thumbs.db
+.directory
+
+# IDE extensions cache
+.cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
