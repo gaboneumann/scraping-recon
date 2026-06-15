@@ -35,11 +35,13 @@ secrets/
 *.key
 *.crt
 
-# Claude Code & development tools
-.claude/settings.local.json
-.claude/commands/
+# Claude Code & AI assistant ecosystem
+.claude/
+CLAUDE.md
 .atl/
-.claude/worktrees/
+
+# Internal docs (not published)
+docs/
 
 # Testing & coverage
 .coverage
