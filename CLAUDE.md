@@ -21,7 +21,7 @@
 ## Commands Reference
 
 ```sh
-source venv/bin/activate
+source .venv/bin/activate
 
 python main.py --url <url>                               # scan completo
 python main.py --url <url> --module <name>               # módulo individual (smoke test)
@@ -33,7 +33,7 @@ python main.py --help                                    # mostrar todas las opc
 make test                                                # unit + integration + coverage
 make test-smoke                                          # smoke tests (pipeline completo)
 make update-snapshots                                    # regenerar snapshots
-venv/bin/pytest tests/unit/ -v                          # solo unit tests
+.venv/bin/pytest tests/unit/ -v                          # solo unit tests
 ```
 
 ---
