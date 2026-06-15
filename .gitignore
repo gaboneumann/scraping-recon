@@ -59,7 +59,7 @@ temp/
 output/
 outputs/
 storage/
-report_*.json
+report*.json
 *.json.tmp
 /tmp/wafw00f.json
 
