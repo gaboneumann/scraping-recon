@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 URL = "https://www.buscalibre.cl/libros/computacion"
-VENV_PYTHON = Path(__file__).parents[2] / "venv" / "bin" / "python"
+VENV_PYTHON = sys.executable
 MAIN = Path(__file__).parents[2] / "main.py"
 
 

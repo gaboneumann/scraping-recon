@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 URL = "https://www.mercadolibre.cl/c/celulares-y-telefonia#menu=categories"
-VENV_PYTHON = Path(__file__).parents[2] / "venv" / "bin" / "python"
+VENV_PYTHON = sys.executable
 MAIN = Path(__file__).parents[2] / "main.py"
 
 
