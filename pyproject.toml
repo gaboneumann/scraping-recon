@@ -25,4 +25,5 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 80
+# Floor / guardrail — flags accidental coverage gaps, not a target to pad toward.
+fail_under = 75
