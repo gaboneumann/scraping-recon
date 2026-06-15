@@ -1,6 +1,6 @@
 # Scraping Recon
 
-> Pre-scraping intelligence for e-commerce and retail sites — scans a URL across 7 dimensions and tells you *what scraper to build before you build it*, without ever scraping the data itself.
+> Pre-scraping intelligence for e-commerce and retail sites: scans a URL across 7 dimensions and tells you *what scraper to build before you build it*, without ever scraping the data itself.
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
 ![Typer](https://img.shields.io/badge/Typer-CLI-white?logo=typer&logoColor=3776AB)
@@ -14,17 +14,17 @@
 
 You find a new e-commerce target. Before sinking hours into a scraper, you need answers that decide the whole approach:
 
-- **Is it legal?** — robots.txt rules + ToS keyword risk
-- **What's the render mode?** — STATIC (SSR), DYNAMIC (CSR), HYBRID, or API_DRIVEN → which HTTP library even works
-- **Are there internal APIs?** — REST/GraphQL endpoints you can hit instead of parsing HTML
-- **Is auth required?** — login form, OAuth, paywall, cookie-consent walls → session complexity
-- **How do I paginate?** — query param, path, cursor, link-rel, load-more, infinite scroll
-- **What antibot defenses exist?** — WAF, TLS fingerprinting, rate-limits, behavioral, CAPTCHA
-- **What e-commerce signals matter?** — price mechanism, cart architecture, variants, reviews, inventory
+- **Is it legal?** robots.txt rules + ToS keyword risk
+- **What's the render mode?** STATIC (SSR), DYNAMIC (CSR), HYBRID, or API_DRIVEN → which HTTP library even works
+- **Are there internal APIs?** REST/GraphQL endpoints you can hit instead of parsing HTML
+- **Is auth required?** login form, OAuth, paywall, cookie-consent walls → session complexity
+- **How do I paginate?** query param, path, cursor, link-rel, load-more, infinite scroll
+- **What antibot defenses exist?** WAF, TLS fingerprinting, rate-limits, behavioral, CAPTCHA
+- **What e-commerce signals matter?** price mechanism, cart architecture, variants, reviews, inventory
 
 Building a scraper blind means discovering each of these the hard way, mid-development. Generic site profilers don't speak the language of scraping decisions (library choice, proxy tier, effort estimate).
 
-**Solution:** one command scans the URL across 7 dimensions in **≤ 27 HTTP requests**, then a pure-function recommender turns the findings into a concrete build plan — primary library, fallback, complexity score, and flags. It flags protections; it does **not** scrape data or run evasion.
+**Solution:** one command scans the URL across 7 dimensions in **≤ 27 HTTP requests**, then a pure-function recommender turns the findings into a concrete build plan: primary library, fallback, complexity score, and flags. It flags protections; it does **not** scrape data or run evasion.
 
 ---
 
@@ -43,20 +43,20 @@ Building a scraper blind means discovering each of these the hard way, mid-devel
 
 ## Capability
 
-**One pipeline, every render mode.** The same scan handles STATIC (SSR), DYNAMIC (CSR), HYBRID, and API_DRIVEN e-commerce sites — the classifier detects the mode and the rest of the pipeline adapts. For JS-heavy sites, the optional `--deep` flag swaps in Playwright XHR interception to catch runtime-only signals (JS-injected prices, infinite scroll, cart endpoints) that static analysis can't see.
+**One pipeline, every render mode.** The same scan handles STATIC (SSR), DYNAMIC (CSR), HYBRID, and API_DRIVEN e-commerce sites. The classifier detects the mode and the rest of the pipeline adapts. For JS-heavy sites, the optional `--deep` flag swaps in Playwright XHR interception to catch runtime-only signals (JS-injected prices, infinite scroll, cart endpoints) that static analysis can't see.
 
 ---
 
 ## Stack
 
-- **Typer** — CLI with explicit option validation
-- **httpx + curl_cffi** — HTTP/2 client with browser TLS impersonation (Chrome/Safari) for antibot probing
-- **BeautifulSoup4 + lxml** — HTML parsing
-- **Pydantic** — schema validation; `models/schemas.py` is the single source of truth for every output
-- **Rich** — formatted terminal report
-- **Playwright** — optional `--deep` mode for runtime XHR interception on CSR/Hybrid sites
-- **dnspython / wafw00f** — DNS signals and WAF fingerprinting
-- **pytest** (+ pytest-asyncio, respx, pytest-cov) — async test suite with snapshot smoke tests
+- **Typer**: CLI with explicit option validation
+- **httpx + curl_cffi**: HTTP/2 client with browser TLS impersonation (Chrome/Safari) for antibot probing
+- **BeautifulSoup4 + lxml**: HTML parsing
+- **Pydantic**: schema validation; `models/schemas.py` is the single source of truth for every output
+- **Rich**: formatted terminal report
+- **Playwright**: optional `--deep` mode for runtime XHR interception on CSR/Hybrid sites
+- **dnspython / wafw00f**: DNS signals and WAF fingerprinting
+- **pytest** (+ pytest-asyncio, respx, pytest-cov): async test suite with snapshot smoke tests
 
 ---
 
@@ -64,10 +64,10 @@ Building a scraper blind means discovering each of these the hard way, mid-devel
 
 ```
 scraping_recon/
-├── main.py                  # CLI entry point (Typer) — two-phase async orchestration
+├── main.py                  # CLI entry point (Typer), two-phase async orchestration
 ├── config.py                # Config dataclass (passed explicitly, no global state)
 ├── models/
-│   └── schemas.py           # Pydantic models — single source of truth for all outputs
+│   └── schemas.py           # Pydantic models, single source of truth for all outputs
 ├── modules/
 │   ├── legal.py             # robots.txt, sitemap, ToS keyword risk
 │   ├── classifier.py        # render mode, frameworks, CMS, e-commerce signals (E1–E7)
@@ -82,11 +82,8 @@ scraping_recon/
 ├── utils/
 │   ├── http.py              # httpx + curl_cffi client factory
 │   ├── tls_test.py          # TLS fingerprint comparison
-│   └── graceful.py          # run_module() — timeout + exception capture wrapper
-├── tests/                   # unit · integration · smoke · real (+ fixtures)
-└── docs/
-    ├── BACKLOG.md           # roadmap, e-commerce signal definitions (E1–E7)
-    └── modules/             # extended module logic (recommender)
+│   └── graceful.py          # run_module(), timeout + exception capture wrapper
+└── tests/                   # unit · integration · smoke · real (+ fixtures)
 ```
 
 ---
@@ -116,13 +113,13 @@ python main.py --url https://example-ecommerce.com --json -o report.json
 
 **Output:** a Rich-formatted terminal report with 8 sections (Legal → Classification → Auth → API → Pagination → Antibot → Recommendations → Module Status), or a JSON document with the same data when `--json` / `-o` is used.
 
-**Fields / shape (JSON top level):** `url`, `timestamp`, `scan_duration_ms`, `modules_status[]`, `legal`, `classifier` (with nested `ecommerce`), `auth`, `api_detector`, `pagination`, `antibot`, `recommender`. Any module can be `null` if skipped or failed — check `modules_status[]`.
+**Fields / shape (JSON top level):** `url`, `timestamp`, `scan_duration_ms`, `modules_status[]`, `legal`, `classifier` (with nested `ecommerce`), `auth`, `api_detector`, `pagination`, `antibot`, `recommender`. Any module can be `null` if skipped or failed. Check `modules_status[]`.
 
 ---
 
 ## Configuration
 
-There is **no config file** — configuration is passed per-scan via CLI flags (mapped onto the `Config` dataclass). JSON is an *output* format, not an input.
+There is **no config file**; configuration is passed per-scan via CLI flags (mapped onto the `Config` dataclass). JSON is an *output* format, not an input.
 
 ### Defaults (`config.py`)
 ```python
@@ -173,7 +170,7 @@ The scan is a **two-phase async orchestration**: independent modules run concurr
                          URL
                           │
         ┌─────────────────┴─────────────────┐
-        │  PHASE 1 — concurrent (asyncio)    │
+        │  PHASE 1: concurrent (asyncio)     │
         │  legal · classifier · auth         │
         │  api_detector · pagination         │
         └─────────────────┬─────────────────┘
@@ -185,7 +182,7 @@ The scan is a **two-phase async orchestration**: independent modules run concurr
             └─────────────┬─────────────┘
                           │
         ┌─────────────────┴─────────────────┐
-        │  PHASE 2 — antibot                 │  ← probes with API-endpoint context
+        │  PHASE 2: antibot                  │  ← probes with API-endpoint context
         └─────────────────┬─────────────────┘
                           │
                   recommender (pure fn)
@@ -194,10 +191,10 @@ The scan is a **two-phase async orchestration**: independent modules run concurr
 ```
 
 ### Key Components
-- **`utils/graceful.run_module()`** — every module runs through this wrapper, which enforces a timeout and captures exceptions so one failing module never aborts the scan (it lands as `INCOMPLETE`/`BLOCKED` in `modules_status`).
-- **`models/schemas.py`** — Pydantic contracts shared by every module and both report renderers; nothing defines schemas inline.
-- **`modules/recommender.py`** — a pure, request-free function: it reads the assembled report and emits library choice, complexity, and flags. Deterministic and unit-testable.
-- **`utils/http.py`** — client factory that switches between httpx and curl_cffi (TLS impersonation) for the antibot fingerprint comparison.
+- **`utils/graceful.run_module()`**: every module runs through this wrapper, which enforces a timeout and captures exceptions so one failing module never aborts the scan (it lands as `INCOMPLETE`/`BLOCKED` in `modules_status`).
+- **`models/schemas.py`**: Pydantic contracts shared by every module and both report renderers; nothing defines schemas inline.
+- **`modules/recommender.py`**: a pure, request-free function that reads the assembled report and emits library choice, complexity, and flags. Deterministic and unit-testable.
+- **`utils/http.py`**: client factory that switches between httpx and curl_cffi (TLS impersonation) for the antibot fingerprint comparison.
 
 ---
 
@@ -213,7 +210,7 @@ The 6 async modules + recommender map one-to-one onto a scraping decision. E-com
 | 4 | **auth_detector** | Is auth required? | form/OAuth/paywall/consent → **session complexity** |
 | 5 | **pagination** | How do results iterate? | query/path/cursor/link-rel/scroll → **pagination strategy** |
 | 6 | **antibot** | What protections exist? | 9 dimensions → 0–10 score → **tool & proxy tier** |
-| — | *e-commerce (E1–E7)* | *Product-level signals?* | *price / cart / variants / reviews / inventory* — *runs within classifier* |
+|   | *e-commerce (E1–E7)* | *Product-level signals?* | *price / cart / variants / reviews / inventory* (runs within classifier) |
 | 7 | **recommender** | What should I build? | library, fallback, complexity, flags → **effort estimate** |
 
 ---
@@ -234,19 +231,11 @@ make update-snapshots  # regenerate smoke snapshots after intentional output cha
 
 ## Design Principles
 
-- **It's a profiler, not a scraper.** It reports protections and signals so you can plan your own scraper — it never extracts product data or runs evasion.
+- **It's a profiler, not a scraper.** It reports protections and signals so you can plan your own scraper; it never extracts product data or runs evasion.
 - **No global state.** `Config` is constructed once and passed explicitly to every module; nothing reads ambient settings.
 - **Single source of truth.** All outputs are Pydantic models in `schemas.py`; modules and renderers import from there.
-- **Graceful degradation.** A module failing or timing out yields a partial report, not a crash — `modules_status[]` records what happened.
+- **Graceful degradation.** A module failing or timing out yields a partial report, not a crash; `modules_status[]` records what happened.
 - **Bounded cost.** The full scan is capped at ≤ 27 HTTP requests, budgeted per module, so reconnaissance stays cheap and polite.
-
----
-
-## Documentation
-
-- **[CLAUDE.md](CLAUDE.md)** — project spec: commands, module→decision map, HTTP budget table, dependency matrix, patterns
-- **[docs/BACKLOG.md](docs/BACKLOG.md)** — roadmap and e-commerce signal definitions (phases E1–E7)
-- **[docs/modules/recommender_logic.md](docs/modules/recommender_logic.md)** — how the recommender maps findings to library/complexity
 
 ---
 
@@ -255,20 +244,20 @@ make update-snapshots  # regenerate smoke snapshots after intentional output cha
 ### Recommended workflow
 
 ```bash
-# 1. Legal first — stop if the target path is disallowed or ToS risk is HIGH
+# 1. Legal first: stop if the target path is disallowed or ToS risk is HIGH
 python main.py --url <url> --module legal
 
-# 2. Classify — STATIC (httpx) vs DYNAMIC (Playwright) vs HYBRID vs API_DRIVEN
+# 2. Classify: STATIC (httpx) vs DYNAMIC (Playwright) vs HYBRID vs API_DRIVEN
 python main.py --url <url> --module classifier      # also reports e-commerce signals
 
-# 3. APIs — if internal endpoints exist, skip HTML parsing
+# 3. APIs: if internal endpoints exist, skip HTML parsing
 python main.py --url <url> --module api_detector
 
-# 4. Auth + pagination — session needs & iteration strategy
+# 4. Auth + pagination: session needs & iteration strategy
 python main.py --url <url> --module auth_detector
 python main.py --url <url> --module pagination
 
-# 5. Antibot — drives library and proxy tier
+# 5. Antibot: drives library and proxy tier
 python main.py --url <url> --module antibot
 
 # 6. Full scan + JSON for downstream tooling
@@ -287,7 +276,7 @@ jq '.classifier.ecommerce.price_mechanism' report.json   # "SERVER_SIDE" | "CLIE
 
 ### Interpreting the report
 
-**Legal** — there is no single ALLOWED/PROHIBITED verdict; read these together:
+**Legal** (there is no single ALLOWED/PROHIBITED verdict; read these together):
 ```
 legal.robots_txt.target_path_allowed : true/false   → does robots.txt allow the target path
 legal.tos.risk_level                 : LOW/MEDIUM/HIGH/UNKNOWN
@@ -327,7 +316,7 @@ estimated_dev_time   → rough estimate (e.g. "2-4 days")
 additional_flags     → e.g. "curl_cffi Chrome/Safari impersonation required"
 ```
 
-> ⚠️ For DYNAMIC/HYBRID sites, the antibot score is **likely underestimated** without `--deep` — runtime protections (fingerprinting, CAPTCHA, behavioral) aren't visible to static analysis. The recommender flags this when it applies.
+> ⚠️ For DYNAMIC/HYBRID sites, the antibot score is **likely underestimated** without `--deep`; runtime protections (fingerprinting, CAPTCHA, behavioral) aren't visible to static analysis. The recommender flags this when it applies.
 
 ### Troubleshooting
 
@@ -343,7 +332,7 @@ additional_flags     → e.g. "curl_cffi Chrome/Safari impersonation required"
 
 ## Ethical Use / Disclaimers
 
-Scraping Recon is a reconnaissance and planning tool: it analyzes publicly reachable pages, reports protections, and recommends an approach. It does **not** scrape product data, bypass authentication, or execute anti-detection evasion. The antibot module sends a small, bounded number of probe requests (within the ≤ 27 budget) — run it only against sites you are authorized to assess. Always verify compliance with local law and the target's Terms of Service before building any scraper.
+Scraping Recon is a reconnaissance and planning tool: it analyzes publicly reachable pages, reports protections, and recommends an approach. It does **not** scrape product data, bypass authentication, or execute anti-detection evasion. The antibot module sends a small, bounded number of probe requests (within the ≤ 27 budget); run it only against sites you are authorized to assess. Always verify compliance with local law and the target's Terms of Service before building any scraper.
 
 ---
 
