@@ -2,9 +2,8 @@
 name = "scraping-recon"
 version = "0.1.0"
 requires-python = ">=3.12"
-
-[project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "pytest-cov>=5"]
+# Dependencies live in requirements.txt (runtime, pinned) and
+# requirements-dev.txt (dev) — the single source of truth for this project.
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
